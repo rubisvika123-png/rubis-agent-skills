@@ -18,30 +18,45 @@ The pipeline logic (cutting, timing, format) is fixed and proven — don't re-de
 per request. What's meant to change per owner is only the **look**: colors, fonts,
 music track. Those are marked below.
 
-## When to run this
+## Installation — you (the technical agent) do this, not the owner
 
-Owner sends one or more video clips (as files, or a note to find them e.g. in a
-Drive/Telegram folder) plus a **hook line** — the short line of text overlaid on the
-first seconds of the reel — and asks to montage/edit them. If the hook text is missing,
-ask for it; don't invent one. If the owner marks which part of the hook to highlight
-(e.g. "выделить: 20 минут" / "highlight: 20 minutes"), wrap exactly that span in
-`[brackets]` when passing the hook string to the script — that's what gets the marker
-underline. No highlight given → the script auto-detects a number/price phrase.
+The owner needs almost nothing: no keys, no accounts, no signup. The only thing
+that's ever theirs to do is drop their own raw clips into `clips/` if they want
+to hand you footage directly instead of sending it another way.
 
-## First-time setup (once per machine)
+**You install and verify this skill yourself, without asking the owner anything:**
 
-1. **ffmpeg** — system package. `ffmpeg -version` to check; `apt install ffmpeg` if missing.
-2. **A Chrome/Chromium binary** — used only to render the hook text overlay (fonts render
-   more reliably via HTML+headless-Chrome than via PIL). `apt install chromium-browser`
-   is the simplest path. The script auto-detects `google-chrome`, `chromium-browser`,
-   `chromium`, or a Playwright-installed Chromium under `~/.cache/ms-playwright/` — no
-   config needed once one of those exists.
-3. **Python deps**: `python3 -m venv venv && venv/bin/pip install -r requirements.txt`
-   (pulls in `faster-whisper` and its own dependencies). The speech-to-text model
-   (`large-v3`, ~2.9GB) downloads automatically on first real run and gets cached —
-   the very first render will be slow while it downloads.
-4. Sanity check the cutting/retake logic with no external deps needed:
-   `venv/bin/python make_reel.py --selfcheck` should print `selfcheck OK: [...]`.
+1. `git clone https://github.com/rubisvika123-png/rubis-agent-skills.git`
+2. `cp -r rubis-agent-skills/reels-montage ~/.claude/skills/`
+3. Install system deps: `apt install -y ffmpeg chromium-browser` (chromium renders
+   the hook text overlay — fonts render more reliably via HTML+headless-Chrome
+   than via PIL). If `chromium-browser` isn't the right package name on this
+   box, the script also auto-detects `google-chrome`, `chromium`, or a
+   Playwright-installed Chromium under `~/.cache/ms-playwright/` — no config
+   needed once one of those exists instead.
+4. Build the Python env: `cd ~/.claude/skills/reels-montage && python3 -m venv venv
+   && venv/bin/pip install -r requirements.txt`.
+5. First run, to confirm it's wired up: `venv/bin/python make_reel.py --selfcheck`
+   → should print `selfcheck OK: [...]`. This also silently triggers the ~2.9GB
+   whisper model download on the *next* real render, not on selfcheck itself.
+
+Restart the agent (`./start.sh`) once this is done — the skill is picked up
+automatically, no further setup step and no announcement to the owner needed
+unless something above actually failed (see Troubleshooting).
+
+## When this triggers itself
+
+Owner sends one or more video clips plus a hook line and asks to montage/edit
+them — matches phrases like "смонтируй", "смонтируй ролик", "собери рилс",
+"montage this", "edit this into a reel" (full trigger list in the front-matter
+`description` above). Do NOT trigger on a subtitle-only request on an
+already-edited video (use `subtitles_only.py` directly for that), long-form
+video editing, or any request with no raw clips to cut.
+
+Owner marks which part of the hook to highlight (e.g. "выделить: 20 минут" /
+"highlight: 20 minutes") → wrap exactly that span in `[brackets]` when passing
+the hook string to the script — that's what gets the marker underline. No
+highlight given → the script auto-detects a number/price phrase.
 
 ## Running it
 
@@ -96,3 +111,41 @@ a new hook text — only rebuilds the hook overlay + music + final compose, ~1 m
   step; that's expected, not a bug.
 - One transcription per full render — it's the costly step, so batch feedback/notes
   rather than re-rendering per tiny fix; use `--recompose` for hook/style-only changes.
+
+## Limits (tell the owner about these up front, before the first render)
+
+- **First real render is slow** — it downloads the whisper `large-v3` speech
+  model (~2.9GB) once and caches it. Every render after that is fast to *start*;
+  the transcription step itself still takes a few minutes (CPU-only).
+- **Delivery channels cap file size** — e.g. Telegram bots reject uploads over
+  ~48MB. If `out/reel.mp4` comes out bigger, re-encode before sending
+  (`-crf 22 -b:a 160k`, see "What's locked" above).
+- **A hook phrase is required** — the owner must supply the text overlaid on
+  the first seconds. Never invent one; ask and wait if it's missing.
+- **`--recompose` cache is single-slot** — it only remembers the *last* full
+  render's cut/subtitles. To re-hook a reel that wasn't the most recent one,
+  you need a full re-render (the cache was already overwritten by a later one).
+
+## If something's off
+
+- **`selfcheck` fails or errors on import** — `venv/pip install -r requirements.txt`
+  didn't complete; rerun it and check for a network/pip error in the output.
+- **No chromium/chrome found** (hook overlay step fails) — `apt install
+  chromium-browser`, or point it at a Playwright-installed Chromium under
+  `~/.cache/ms-playwright/` if that's already on the box; no code change needed
+  once a binary exists at one of the auto-detected paths.
+- **First render feels "stuck" for several minutes** — normal if it's the very
+  first render on this machine; it's downloading the 2.9GB model in the
+  background. Not a bug. Subsequent renders don't re-download it.
+- **Rendered file rejected by the delivery channel ("too big"/"file too large")**
+  — re-encode smaller (`-crf 22 -b:a 160k`) before resending, don't re-render
+  from scratch.
+- **Owner never sent a hook line** — ask for it explicitly; don't guess or
+  auto-generate one.
+- **Agent got restarted mid-render** (watchdog, crash, usage limit) — check for
+  an unfinished render before telling the owner nothing happened: look for a
+  live `ffmpeg`/`whisper` process, leftover `out/_last*` cache files, or a
+  half-written `out/reel.mp4`; resume/re-render rather than assuming failure.
+- **A rendered reel's cut/subtitles look right but the hook text or music is
+  wrong** — don't do a full re-render; use `--recompose` (see "Running it")
+  to fix just that in ~1 minute.
