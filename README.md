@@ -16,3 +16,8 @@ cp -r rubis-agent-skills/<название-навыка> ~/.claude/skills/
   умная нарезка по словам (без потери начала/конца слов, вырезает паузы и дубли),
   ускорение 1.2x, субтитры, текстовый хук первые секунды, музыка. Инструкция и что
   можно менять под свой стиль — в `reels-montage/SKILL.md`.
+
+- **[youtube-shorts-autoposter](youtube-shorts-autoposter/)** — автопостинг YouTube
+  Shorts: видео из папки Google Drive → расшифровка → заголовок/описание от LLM →
+  публикация на канал. Владельцу нужен свой Google Cloud проект и Groq API ключ —
+  подробности в `youtube-shorts-autoposter/SKILL.md`.
