@@ -325,6 +325,9 @@ def main():
         i=args.index("-o"); out=args[i+1]; args=args[:i]+args[i+2:]
     hook, clips = args[0], args[1:]
     tmp = tempfile.mkdtemp(dir=HERE)
+    # Drafts live here only for this render. Without cleanup they piled up to
+    # 7.5 GB in a week and filled the server disk (02.10.2026).
+    import atexit; atexit.register(shutil.rmtree, tmp, True)
     cache_fast = os.path.join(HERE,"out","_last_fast.mp4")
     cache_ass  = os.path.join(HERE,"out","_last.ass")
     fast=f"{tmp}/fast.mp4"; ass=f"{tmp}/subs.ass"; hookpng=f"{tmp}/hook.png"
