@@ -1,0 +1,6 @@
+{
+  "name": "style-guard",
+  "version": "0.1.0",
+  "description": "Before the marketer sends Vika a draft, a second model checks it for AI-sounding text and for Vika's own style; a failing draft goes back for a rewrite",
+  "author": { "name": "Денис" }
+}

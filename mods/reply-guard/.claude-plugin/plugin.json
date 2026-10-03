@@ -1,0 +1,6 @@
+{
+  "name": "reply-guard",
+  "version": "0.1.0",
+  "description": "Stops an agent's outgoing Telegram/ChatPlace message that breaks Vika's wording rules and makes the agent rewrite it",
+  "author": { "name": "Денис" }
+}

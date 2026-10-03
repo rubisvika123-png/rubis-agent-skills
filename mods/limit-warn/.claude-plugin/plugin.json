@@ -1,0 +1,6 @@
+{
+  "name": "limit-warn",
+  "version": "0.1.0",
+  "description": "Warns the agent's owner in Telegram before a Claude plan limit runs out, with the reset time",
+  "author": { "name": "Денис" }
+}

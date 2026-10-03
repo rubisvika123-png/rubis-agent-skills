@@ -1,0 +1,4 @@
+{
+  "description": "reply-guard hooks module",
+  "modules": ["./register.js"]
+}
