@@ -1,0 +1,6 @@
+{
+  "name": "unstick",
+  "version": "0.1.0",
+  "description": "Submits a Telegram message that got stuck in the agent's input box while it was busy",
+  "author": { "name": "Денис" }
+}
