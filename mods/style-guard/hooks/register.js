@@ -71,6 +71,10 @@ export function register(on) {
   on('turn.start', async ($, e, next) => { refusals = 0; return next(e) })
 
   on('tool.call', { tool: 'mcp__dashi-channel__reply' }, async ($, e, next) => {
+    // A channel or group (negative chat id) means publishing a text the owner
+    // already approved — the check is for drafts sent to the owner, not for her
+    // own approved words (Liza 05.10.2026: an approved post was blocked).
+    if (String(e.chat_id || '').startsWith('-')) return next(e)
     const text = String(e.text || '')
     if (text.length < MIN_CHARS || refusals >= MAX_REFUSALS) return next(e)
     let v = null
