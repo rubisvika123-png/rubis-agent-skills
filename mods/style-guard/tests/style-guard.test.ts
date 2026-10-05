@@ -29,6 +29,13 @@ test('an AI-sounding draft is sent back with the problems', async ($, on) => {
   expect(out.deny).toContain('ИИ-штамп')
 })
 
+test('publishing to a channel is never checked — the owner already approved it', async ($, on) => {
+  const asked = wire(on, '{"has_draft":true,"verdict":"rewrite","problems":["x"]}')
+  const out = await $.tool.call({ tool: 'mcp__dashi-channel__reply', chat_id: '-1001881923348', text: LONG })
+  expect(out).toEqual({ result: 'sent' })
+  expect(asked.length).toBe(0)
+})
+
 test('a good draft or a report goes out', async ($, on) => {
   wire(on, '{"has_draft":false,"verdict":"ok","problems":[]}')
   const out = await $.tool.call({ tool: 'mcp__dashi-channel__reply', chat_id: '1', text: LONG })
