@@ -329,12 +329,17 @@ def make_hook_png(text, png_path):
                 idx -= 1
         raw = " ".join(words[:idx]) + " \x01" + " ".join(words[idx:]) + "\x02"
     body = mono(raw).replace("\x01", '<span class="mark">').replace("\x02", "</span>")
+    # Snap Chromium (Ubuntu's default) can neither read nor write hidden dirs like
+    # ~/.claude where this skill lives: render in a plain folder in home instead.
+    work = tempfile.mkdtemp(prefix="reels-hook-", dir=os.path.expanduser("~"))
+    for f in os.listdir(FONTS_DIR): shutil.copy(os.path.join(FONTS_DIR, f), work)
+    fonts = work
     # Rendered via HTML+chromium (Oswald + Plex Mono can't be drawn by PIL cleanly).
     # Safe band [245,585]: JS shrinks the font until the hook fits (no IG-UI / no
     # forehead overlap). Transparent PNG -> overlaid on the video by compose().
     html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-@font-face{{font-family:'Oswald';src:url('file://{FONTS_DIR}/Oswald.ttf');font-weight:200 700;}}
-@font-face{{font-family:'Plex';src:url('file://{FONTS_DIR}/PlexMono-SmBd.ttf');font-weight:600;}}
+@font-face{{font-family:'Oswald';src:url('file://{fonts}/Oswald.ttf');font-weight:200 700;}}
+@font-face{{font-family:'Plex';src:url('file://{fonts}/PlexMono-SmBd.ttf');font-weight:600;}}
 *{{margin:0;box-sizing:border-box;}}
 html,body{{width:{W}px;height:{H}px;background:transparent;}}
 .hook{{position:absolute;left:84px;top:245px;right:110px;font-family:'Oswald';font-weight:600;
@@ -349,12 +354,16 @@ html,body{{width:{W}px;height:{H}px;background:transparent;}}
 while(h.offsetHeight>340&&fs>34){{fs-=2;h.style.fontSize=fs+'px';}}}};</script>
 </body></html>"""
     png_path = os.path.abspath(png_path)
-    htmlpath = png_path + ".html"
+    htmlpath, shot = os.path.join(work, "hook.html"), os.path.join(work, "hook.png")
     open(htmlpath, "w").write(html)
-    run([_find_chrome(),"--headless=new","--no-sandbox","--hide-scrollbars",
-         "--force-device-scale-factor=1","--default-background-color=00000000",
-         "--virtual-time-budget=1500",f"--window-size={W},{H}",
-         f"--screenshot={png_path}", f"file://{htmlpath}"])
+    try:
+        run([_find_chrome(),"--headless=new","--no-sandbox","--hide-scrollbars",
+             "--force-device-scale-factor=1","--default-background-color=00000000",
+             "--virtual-time-budget=1500",f"--window-size={W},{H}",
+             f"--screenshot={shot}", f"file://{htmlpath}"])
+        shutil.move(shot, png_path)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 # ---------- 7. final compose ----------
 def compose(video, ass, hook_png, music, dst):

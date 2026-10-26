@@ -1,1 +1,2 @@
 faster-whisper
+av<19  # PyAV 19 dropped the metadata_errors arg faster-whisper 1.2 passes (26.10.2026)
