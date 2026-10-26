@@ -5,8 +5,8 @@ Usage: make_reel.py "<hook text>" clip1.mov [clip2.mov ...] -o out.mp4
 Self-check (no ffmpeg): make_reel.py --selfcheck
 
 Pipeline: concat+normalize 1080x1920 -> transcribe once (faster-whisper,
-word timestamps) -> SPEECH-AWARE cut (drop retakes + pauses on WORD
-boundaries, never clipping a finished word) -> speed 1.2x -> styled ASS
+word timestamps) -> cut: retakes chosen from the words, pauses found by
+MEASURED AUDIO ENERGY (word timestamps never place a cut) -> speed 1.2x -> styled ASS
 subtitles remapped from the same words (no 2nd transcription) -> red-block
 hook overlay (first HOOK_SECS) -> ducked music -> H.264 export.
 """
@@ -30,7 +30,20 @@ GLOSSARY = {"рюсом": "рилсом", "рюс": "рилс", "рюсы": "р�
 #  - cut pauses hard             -> gaps longer than MAX_PAUSE collapse to 2*WORD_PAD.
 #  - cut stumble/retakes         -> see drop_retakes().
 WORD_PAD  = 0.10   # sec kept before/after each speech run (protects word edges)
-MAX_PAUSE = 0.35   # sec: gap longer than this between words is a "pause" -> cut
+MAX_PAUSE = 0.35   # sec: legacy word-gap rule, used only if energy analysis fails
+
+# Energy-based pause cutting, after github.com/qwwiwi/montage-pipeline (MIT,
+# (c) 2026 Dashi Eshiev). Measured on Vika's raw takes 26.10.2026: word-gap
+# cutting left 0.4-3.7 s of dead air per take, energy cutting 0-0.5 s, no
+# speech energy removed. Recognisers invent words in silence and smear words
+# across pauses, so a timestamp is a guess; the energy envelope is a measurement.
+E_WINDOW_MS, E_HOP_MS = 20, 10
+E_HEADROOM_DB, E_FLOOR_MIN, E_FLOOR_MAX = 6.5, -46.0, -30.0
+E_MIN_PAUSE_MS = 260        # shorter is a breath, not a pause
+E_GUARD_MID_MS = 90         # silence kept at each edge inside a phrase
+E_GUARD_SENTENCE_MS = 130   # ...and at a sentence end
+E_MIN_REMOVE_MS = 60        # not worth a splice
+E_HEAD_KEEP_MS, E_TAIL_KEEP_MS = 200, 600
 
 # IG safe zones (px)
 TOP_SAFE, BOTTOM_SAFE, RIGHT_COL, SIDE = 220, 450, 250, 60
@@ -113,6 +126,79 @@ def drop_retakes(words, max_n=6, max_gap=4):
             i += 1
     out = [w for w,k in zip(words, keep) if k]
     return out or words   # never return empty
+
+# ---------- 3a. audio energy (pause detection) ----------
+def envelope(media):
+    import array, math
+    raw = subprocess.run(["ffmpeg","-v","error","-i",media,"-f","s16le","-ac","1",
+                          "-ar","16000","-"], capture_output=True, check=True).stdout
+    smp = array.array("h"); smp.frombytes(raw[:len(raw)-len(raw)%2])
+    win, hop = 16000*E_WINDOW_MS//1000, 16000*E_HOP_MS//1000
+    env = []
+    for st in range(0, max(0, len(smp)-win), hop):
+        acc = sum(v*v for v in smp[st:st+win])
+        rms = math.sqrt(acc/win)
+        env.append(20*math.log10(rms/32768) if rms > 0 else -120.0)
+    return env, hop/16000.0
+
+def silence_floor(env):
+    """Threshold from SPEECH loudness (p75 - headroom), clamped; a noise-based
+    floor sits under room tone and misses half the pauses."""
+    speech = sorted(env)[int(0.75*len(env))]
+    return max(E_FLOOR_MIN, min(E_FLOOR_MAX, speech - E_HEADROOM_DB))
+
+def silence_runs(env, hop, floor):
+    runs, st = [], None
+    for i, v in enumerate(env):
+        if v < floor:
+            if st is None: st = i
+        elif st is not None:
+            runs.append((st*hop, i*hop)); st = None
+    if st is not None: runs.append((st*hop, len(env)*hop))
+    return runs
+
+def pause_removals(runs, words, dur):
+    """Silence to cut. Pause edges are never touched; words only tell whether a
+    sentence ended there (bigger guard)."""
+    out = []
+    for a, b in runs:
+        if (b-a)*1000 < E_MIN_PAUSE_MS: continue
+        if a <= 0.15: ra, rb = a, max(a, b - E_HEAD_KEEP_MS/1000)
+        elif b >= dur - 0.15: ra, rb = min(b, a + E_TAIL_KEEP_MS/1000), b
+        else:
+            prev = max((w for w in words if w["end"] <= a + 0.10), key=lambda w: w["end"], default=None)
+            sent = bool(prev) and prev["text"].rstrip('"»)').endswith((".", "!", "?", "…"))
+            g = (E_GUARD_SENTENCE_MS if sent else E_GUARD_MID_MS)/1000
+            ra, rb = a + g, b - g
+        if (rb-ra)*1000 >= E_MIN_REMOVE_MS: out.append((ra, rb))
+    return out
+
+def retake_removals(all_words, kept_words, pad=WORD_PAD):
+    """Stretches holding words that drop_retakes() threw away."""
+    kept_ids = {id(w) for w in kept_words}
+    out, i = [], 0
+    while i < len(all_words):
+        if id(all_words[i]) in kept_ids: i += 1; continue
+        j = i
+        while j < len(all_words) and id(all_words[j]) not in kept_ids: j += 1
+        a = all_words[i-1]["end"] + pad if i > 0 else 0.0
+        b = all_words[j]["start"] - pad if j < len(all_words) else all_words[j-1]["end"] + pad
+        if b > a: out.append((a, b))
+        i = j
+    return out
+
+def plan_keep_spans_energy(media, all_words, kept_words, dur):
+    env, hop = envelope(media)
+    floor = silence_floor(env)
+    cuts = sorted(pause_removals(silence_runs(env, hop, floor), kept_words, dur)
+                  + retake_removals(all_words, kept_words))
+    spans, cur = [], 0.0
+    for a, b in cuts:
+        if a > cur + 0.02: spans.append([cur, a])
+        cur = max(cur, b)
+    if cur < dur - 0.02: spans.append([cur, dur])
+    print(f"energy cut: floor {floor:.1f} dB, {len(cuts)} cuts")
+    return spans
 
 # ---------- 3b. plan keep-spans (pause cutting on word boundaries) ----------
 def plan_keep_spans(words, pad=WORD_PAD, max_pause=MAX_PAUSE):
@@ -309,6 +395,19 @@ def _selfcheck():
     assert map_time(5.0,spans,offs,1.0) < 5.0, map_time(5.0,spans,offs,1.0)
     # speed halves mapped time
     assert abs(map_time(5.0,spans,offs,2.0)*2 - map_time(5.0,spans,offs,1.0)) < 1e-6
+    # energy pause plan: guards keep pause edges, short gaps survive, head/tail trimmed
+    runs = [(0.0, 0.5), (1.1, 3.0), (3.6, 3.75), (5.0, 6.0)]
+    cuts = pause_removals(runs, kept, 6.0)
+    assert cuts[0] == (0.0, 0.3), cuts                          # head: keep 200 ms before speech
+    mid = cuts[1]
+    assert abs(mid[0]-(1.1+E_GUARD_MID_MS/1000))<1e-9 and abs(mid[1]-(3.0-E_GUARD_MID_MS/1000))<1e-9, mid
+    assert all(not (a < 3.7 < b) for a,b in cuts), cuts          # 150 ms breath is not cut
+    assert abs(cuts[-1][0]-(5.0+E_TAIL_KEEP_MS/1000))<1e-9, cuts # tail keeps 600 ms
+    w2 = [dict(x) for x in words]; w2[2]["text"] = "тест."     # sentence end -> bigger guard
+    assert abs(pause_removals([(1.1,3.0)], w2, 6.0)[0][0]-(1.1+E_GUARD_SENTENCE_MS/1000))<1e-9
+    rr = retake_removals(words, kept)
+    assert rr and rr[0][0] > 1.1 and rr[0][1] < 4.0, rr         # the aborted first attempt is cut
+    assert silence_floor([-20.0]*80 + [-70.0]*20) == -30.0       # clamp to the loud end
     print("selfcheck OK:", txt)
 
 def main():
@@ -339,15 +438,21 @@ def main():
     else:
         joined=f"{tmp}/joined.mp4"; cut=f"{tmp}/cut.mp4"
         concat(clips, joined)
-        words = transcribe_words(joined)
-        words = drop_retakes(words)
+        dur = ffprobe_dur(joined)
+        all_words = [w for w in transcribe_words(joined) if w["start"] < dur]  # drop words invented past the end
+        words = drop_retakes(all_words)
         print(f"words kept after retake removal: {len(words)}")
-        spans = plan_keep_spans(words)
+        try:
+            spans = plan_keep_spans_energy(joined, all_words, words, dur)
+        except Exception as e:  # energy analysis failed: fall back to the word-gap rule
+            print(f"energy cut failed ({e}); falling back to word gaps")
+            spans = plan_keep_spans(words)
         print(f"keep-spans: {len(spans)}")
         apply_cuts(joined, spans, cut)
         speed_up(cut, fast)
         n = build_ass(words, spans, ass)
         print(f"subtitles: {n} chunks")
+        os.makedirs(os.path.dirname(cache_fast), exist_ok=True)  # fresh clone has no out/
         shutil.copy(fast, cache_fast); shutil.copy(ass, cache_ass)  # cache for --recompose
     make_hook_png(hook, hookpng)
     mp3s = sorted(glob.glob(os.path.join(HERE,"music","*.mp3")))
