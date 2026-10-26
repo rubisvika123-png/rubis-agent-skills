@@ -2,7 +2,7 @@
 name: reels-montage
 description: >
   Assembles vertical (1080x1920) short-form video reels from raw clips: speech-aware
-  cutting (removes pauses and stumble/retakes on word boundaries, never mid-word),
+  cutting (pauses found by measured audio energy, stumbles/retakes from the words, never mid-word),
   1.2x speed, styled burned-in subtitles, a branded text hook overlay for the first
   seconds, and background music. Use when the owner sends one or more video clips
   plus a hook phrase and asks to montage/edit them into a reel — triggers on
@@ -77,12 +77,18 @@ a new hook text — only rebuilds the hook overlay + music + final compose, ~1 m
 
 ## What's locked (the actual editing logic — don't change without a real reason)
 
-- **Cutting is speech-aware, on word boundaries, never loudness-based.** Transcribes
-  once (word-level timestamps), then: never clips a finished word (small padding kept
-  around every word, including the last); cuts silences longer than `MAX_PAUSE`
-  (0.35s — the tempo knob, lower it for a tighter edit); detects and removes
-  stumble/retakes (an aborted phrase immediately restarted — only the clean restart
-  survives, subtitles never show the botched attempt).
+- **Pauses are cut by measured audio energy, not by transcript timestamps** (after
+  github.com/qwwiwi/montage-pipeline, MIT). The silence threshold is derived from the
+  speech loudness of each file (p75 − 6.5 dB, clamped −46…−30 dB); a pause is ≥ 260 ms;
+  90 ms of silence is kept on each edge inside a phrase, 130 ms at a sentence end, so
+  word endings are never clipped. Recognisers invent words in silence and smear words
+  across pauses — a timestamp is a guess, the energy envelope is a measurement.
+  Measured on real phone takes: word-gap cutting left 0.4–3.7 s of dead air per take,
+  energy cutting 0–0.5 s, with no speech removed.
+- **Retakes come from the words**: one transcription (word-level), an aborted phrase
+  immediately restarted is removed — only the clean restart survives, subtitles never
+  show the botched attempt. If the energy analysis fails, the old word-gap rule
+  (`MAX_PAUSE` 0.35 s) is used as a fallback.
 - **Speed** = 1.2x on the final cut (pitch-preserved, not the "sped-up chipmunk" effect).
 - **Format** = vertical 1080x1920, burned-in subtitles (lowercase, centered, no box/plate,
   positioned above the platform's bottom-safe zone), hook shown for the first 4 seconds.
