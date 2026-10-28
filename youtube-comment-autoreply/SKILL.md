@@ -1,6 +1,6 @@
 ---
 name: youtube-comment-autoreply
-description: Set up an automatic reply-bot for comments on the owner's YouTube videos. Every new top-level comment gets the same fixed reply (e.g. "link in the channel header"), posted via the official YouTube Data API — no keyword matching needed. Use when the owner asks to auto-answer YouTube comments, or to fold a comment-triggered funnel (same idea as an Instagram ChatPlace автоворонка) into YouTube without re-editing videos.
+description: Set up an automatic reply-bot for comments on the owner's YouTube videos. Every new top-level comment gets the same fixed reply (e.g. "link in the channel header"), posted via the official YouTube Data API — no keyword matching needed. Use when the owner asks to auto-answer YouTube comments, or to fold a comment-triggered funnel (same idea as an Instagram ChatPlace автоворонка) into YouTube without re-editing videos. Triggers (owner speaks Russian): «автоответ на комментарии в YouTube», «отвечай на комментарии на ютубе», «бот для комментариев YouTube», «настрой автоответ под роликами».
 ---
 
 # YouTube Comment Autoreply

@@ -1,6 +1,6 @@
 ---
 name: youtube-shorts-autoposter
-description: Set up an automatic YouTube Shorts autoposter for the owner's channel. The owner drops vertical videos into a Google Drive folder; this pipeline downloads each one, transcribes it, writes an SEO-optimized title + description with an LLM, uploads it to the owner's channel as a public Short, then moves the file to a "done" subfolder. Use when the owner asks to auto-publish their videos to YouTube from a Drive folder.
+description: Set up an automatic YouTube Shorts autoposter for the owner's channel. The owner drops vertical videos into a Google Drive folder; this pipeline downloads each one, transcribes it, writes an SEO-optimized title + description with an LLM, uploads it to the owner's channel as a public Short, then moves the file to a "done" subfolder. Use when the owner asks to auto-publish their videos to YouTube from a Drive folder. Triggers (owner speaks Russian): «автопостинг шортсов», «выкладывай мои видео на YouTube сам», «автозагрузка в YouTube Shorts», «публикуй ролики из папки на Google Диске».
 ---
 
 # YouTube Shorts Autoposter
