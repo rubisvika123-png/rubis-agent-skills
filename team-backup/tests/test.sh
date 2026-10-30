@@ -29,6 +29,7 @@ echo soul > $H/.hermes/profiles/montazher/SOUL.md; echo "model: x" > $H/.hermes/
 echo "OPENAI_API_KEY=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" > $H/.hermes/profiles/montazher/.env
 echo '{}' > $H/.hermes/profiles/montazher/auth.json; echo m > $H/.hermes/profiles/montazher/memories/MEMORY.md
 echo s > $H/.hermes/profiles/montazher/sessions/1.json
+mkdir -p $H/.hermes/knowledge && echo owner > $H/.hermes/knowledge/INDEX.md
 
 git init -q --bare $T/remote.git; git clone -q $T/remote.git $T/repo 2>/dev/null
 export TB_HOME=$H TB_REPO=$T/repo
@@ -38,7 +39,7 @@ out=$($B) || fail "backup failed: $out"; echo "$out" | grep -q "Копия от�
 git clone -q $T/remote.git $T/check; S=$T/check/snapshot
 for f in agents/ai-victoriarubis/CLAUDE.md agents/ai-marketing/core/memory/notes.md agents/ai-marketing/state/telegram/access.json \
          agents/ai-marketing/.claude/skills/s/SKILL.md claude/skills/k/SKILL.md claude/settings.json \
-         claude/projects/-root-ai-marketing/memory/MEMORY.md hermes/profiles/montazher/SOUL.md hermes/profiles/montazher/memories/MEMORY.md MANIFEST.txt; do
+         claude/projects/-root-ai-marketing/memory/MEMORY.md hermes/profiles/montazher/SOUL.md hermes/profiles/montazher/memories/MEMORY.md hermes/knowledge/INDEX.md MANIFEST.txt; do
   [ -f "$S/$f" ] || fail "missing $f"; done
 for f in agents/ai-marketing/secrets agents/ai-marketing/.mcp.json agents/ai-marketing/dashi-plugin-claude-code agents/ai-marketing/node_modules \
          agents/ai-marketing/core/.env claude/.credentials.json hermes/profiles/montazher/.env hermes/profiles/montazher/auth.json hermes/profiles/montazher/sessions agents/not-an-agent; do

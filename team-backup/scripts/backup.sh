@@ -81,7 +81,7 @@ done
 # Hermes agents (second engine): character, settings, skills, memory.
 if [ -d "$H/.hermes" ]; then
   for f in SOUL.md config.yaml; do copy "$H/.hermes/$f" "hermes/$f"; done
-  for sub in skills memories plugins; do copy "$H/.hermes/$sub/" "hermes/$sub/"; done
+  for sub in skills memories plugins knowledge; do copy "$H/.hermes/$sub/" "hermes/$sub/"; done
   for p in "$H"/.hermes/profiles/*/; do
     [ -d "$p" ] || continue
     n="$(basename "$p")"; agents+=("hermes:$n")
