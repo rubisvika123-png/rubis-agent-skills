@@ -36,6 +36,10 @@ description: Use when the owner asks to set up, check, fix or restore the nightl
    (путь к своему `secrets/channel.env` подставь свой):
    `30 3 * * * TB_NOTIFY_ENV=/root/<папка-техспеца>/secrets/channel.env /root/.agents-backup/backup.sh >> /root/.agents-backup/backup.log 2>&1`
    Если копия однажды не сохранится, владелец получит сообщение от твоего бота.
+   Общая папка команды (общая память, доска задач) попадает в копию сама, если это
+   `~/second-brain`. Если у команды общая папка называется иначе — добавь в эту же
+   строку перед `/root/.agents-backup/backup.sh` ещё `TB_SHARED=/root/<общая-папка>`
+   (несколько папок — через пробел, в кавычках).
 8. Напиши владельцу одним сообщением: копия работает, сколько агентов в ней,
    хранилище закрытое, следующая копия сегодня ночью.
 

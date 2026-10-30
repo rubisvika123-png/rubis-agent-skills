@@ -23,6 +23,9 @@ if [ -d "$SNAP/agents" ]; then
 fi
 [ -d "$SNAP/claude" ] && put "$SNAP/claude/" "$H/.claude/"
 [ -d "$SNAP/hermes" ] && put "$SNAP/hermes/" "$H/.hermes/"
+if [ -d "$SNAP/shared" ]; then
+  for d in "$SNAP"/shared/*/; do put "$d" "$H/$(basename "$d")/"; done
+fi
 
 if [ "${TB_SKIP_SYSTEM:-0}" != 1 ] && [ -d "$SNAP/system" ]; then
   if [ -s "$SNAP/system/crontab.txt" ]; then

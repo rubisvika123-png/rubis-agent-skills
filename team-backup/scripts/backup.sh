@@ -90,6 +90,12 @@ if [ -d "$H/.hermes" ]; then
   done
 fi
 
+# Shared team folder (общая память и доска задач): ~/second-brain by default,
+# plus any extra folders listed in TB_SHARED (space-separated absolute paths).
+for d in "$H/second-brain" ${TB_SHARED:-}; do
+  d="${d%/}"; [ -d "$d" ] && copy "$d/" "shared/$(basename "$d")/"
+done
+
 # Schedules: cron and services that keep agents alive.
 if [ "${TB_SKIP_SYSTEM:-0}" != 1 ]; then
   mkdir -p "$SNAP/system"
