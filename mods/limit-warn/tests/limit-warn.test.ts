@@ -16,16 +16,16 @@ function wire(on: any) {
   return sent
 }
 
-test('below 90% nobody is bothered', async ($, on) => {
+test('below 80% nobody is bothered', async ($, on) => {
   const sent = wire(on)
-  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(89.9)], changed: ['rateLimits'] })
+  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(79.9)], changed: ['rateLimits'] })
   expect(sent.length).toBe(0)
 })
 
-test('at 90% the owner gets one warning, not one per measurement', async ($, on) => {
+test('at 80% the owner gets one warning, not one per measurement', async ($, on) => {
   const sent = wire(on)
-  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(91)], changed: ['rateLimits'] })
-  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(95)], changed: ['rateLimits'] })
+  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(81)], changed: ['rateLimits'] })
+  await $.session.measure({ context: { window: 1 }, rateLimits: [FIVE(85)], changed: ['rateLimits'] })
   expect(sent.length).toBe(1)
   const body = JSON.parse(sent[0].init.body)
   expect(body.chat_id).toBe('111111111')
