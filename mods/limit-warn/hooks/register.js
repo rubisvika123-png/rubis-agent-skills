@@ -9,7 +9,7 @@
 // (start.sh loads secrets/channel.env), so the warning arrives from the
 // agent's own bot, like the watchdog's.
 
-const THRESHOLD = 90
+const THRESHOLD = 80   // Vika 04.11.2026: at 90–99% it is too late to react, warn at 80%
 
 const KIND_RU = { five_hour: 'пятичасового', seven_day: 'недельного' }
 
