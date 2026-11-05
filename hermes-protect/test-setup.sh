@@ -10,7 +10,7 @@ printf 'model:\n  default: x\nhooks_auto_accept: false\n' > "$T/h/config.yaml"
 printf 'hooks:\n  pre_tool_call: []\ncompression:\n  enabled: true\n  threshold: 0.75\n  target_ratio: 0.2\n' > "$T/h/profiles/second/config.yaml"
 printf '#!/bin/sh\necho "$*" >> %s/calls\n' "$T" > "$T/bin/hermes"; chmod +x "$T/bin/hermes"
 printf "# Агент\n" > "$T/h/SOUL.md"
-run() { HERMES_DIR="$T/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" MC_SRC="$PWD/media-check" bash setup.sh; }
+run() { HERMES_DIR="$T/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" MC_SRC="$PWD/media-check" BA_SRC="$PWD/busy-ack-ru" bash setup.sh; }
 out=$(run) || fail "setup failed: $out"
 [ -x "$T/h/hooks/protect-home.py" ] || fail "hook not installed"
 grep -q "command: $T/h/hooks/protect-home.py" "$T/h/config.yaml" || fail "hook not in config"
@@ -29,6 +29,11 @@ grep -A4 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold
 grep -A4 '^compression:' "$T/h/config.yaml" | grep -q 'threshold_tokens: 100000$' || fail "main cap missing"
 grep -q 'target_ratio: 0.2' "$T/h/profiles/second/config.yaml" || fail "compression block damaged"
 grep -A3 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
+[ -f "$T/h/plugins/busy-ack-ru/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/busy-ack-ru/plugin.yaml" ] || fail "busy-ack-ru not installed"
+grep -q -- "--profile second plugins enable busy-ack-ru" "$T/calls" || fail "busy-ack-ru not enabled"
+grep -q "^config set display.busy_input_mode steer --force" "$T/calls" || fail "main steer mode"
+grep -q -- "--profile second config set display.busy_input_mode steer --force" "$T/calls" || fail "profile steer mode"
+grep -q -- "--profile second config set display.show_commentary false --force" "$T/calls" || fail "quiet mode not on second profile"
 run >/dev/null
 [ "$(grep -c '^compression:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated compression"
 [ "$(grep -c 'threshold_tokens:' "$T/h/profiles/second/config.yaml")" = 1 ] || fail "re-run duplicated cap"
