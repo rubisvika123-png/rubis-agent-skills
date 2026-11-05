@@ -25,10 +25,13 @@ grep -q "Проверка перед «готово»" "$T/h/SOUL.md" || fail "r
 [ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
 grep -q "plugins enable media-check" "$T/calls" && grep -q -- "--profile second plugins enable media-check" "$T/calls" || fail "media-check not enabled"
 grep -A3 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold: 0.1$' || fail "profile compression not lowered"
+grep -A4 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold_tokens: 100000$' || fail "profile cap missing"
+grep -A4 '^compression:' "$T/h/config.yaml" | grep -q 'threshold_tokens: 100000$' || fail "main cap missing"
 grep -q 'target_ratio: 0.2' "$T/h/profiles/second/config.yaml" || fail "compression block damaged"
 grep -A3 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
 run >/dev/null
 [ "$(grep -c '^compression:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated compression"
+[ "$(grep -c 'threshold_tokens:' "$T/h/profiles/second/config.yaml")" = 1 ] || fail "re-run duplicated cap"
 [ "$(grep -c 'verify-gate.py' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated gate"
 [ "$(grep -c 'Проверка перед «готово»' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated rule"
 [ "$(grep -c '^hooks:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated hooks"
