@@ -44,23 +44,34 @@ hooks_auto_accept: true
 EOF
 done
 
-# 2–3. Тихий режим и самообновление разговора (основной профиль)
-for kv in \
-  "display.memory_notifications off" \
-  "display.file_mutation_verifier false" \
-  "display.turn_completion_explainer false" \
-  "display.credits_notices false" \
-  "display.busy_ack_enabled false" \
-  "display.interim_assistant_messages false" \
-  "display.long_running_notifications false" \
-  "display.show_commentary false" \
-  "telegram.gateway_restart_notification false" \
-  "session_reset.mode both" \
-  "session_reset.at_hour 4" \
-  "session_reset.idle_minutes 240" \
-  "session_reset.notify false"; do
-  # shellcheck disable=SC2086
-  "$HB" config set $kv --force >/dev/null
+# 2–3. Тихий режим и самообновление разговора — во всех профилях.
+#      busy_input_mode steer: сообщение, присланное во время работы, агент учитывает по ходу,
+#      а не бросает начатую задачу (раньше «ну что там?» обрывало длинную работу).
+profile_args() { [ "$1" = "$H" ] && return 0; printf -- '--profile\n%s\n' "$(basename "$1")"; }
+SETTINGS=(
+  "display.memory_notifications off"
+  "display.file_mutation_verifier false"
+  "display.turn_completion_explainer false"
+  "display.credits_notices false"
+  "display.busy_ack_enabled false"
+  "display.interim_assistant_messages false"
+  "display.long_running_notifications false"
+  "display.show_commentary false"
+  "telegram.gateway_restart_notification false"
+  "session_reset.mode both"
+  "session_reset.at_hour 4"
+  "session_reset.idle_minutes 240"
+  "session_reset.notify false"
+  "display.busy_input_mode steer"
+  "display.busy_steer_ack_enabled false"
+)
+for home in "$H" "$H"/profiles/*; do
+  [ -f "$home/config.yaml" ] || continue
+  mapfile -t PA < <(profile_args "$home")
+  for kv in "${SETTINGS[@]}"; do
+    # shellcheck disable=SC2086
+    "$HB" "${PA[@]}" config set $kv --force >/dev/null
+  done
 done
 
 # 3б. Раннее сжатие разговора во всех профилях: без него один длинный разговор разрастается
@@ -114,15 +125,19 @@ RULE
 done
 
 # 5. Третья ступень: видео/PDF/картинки, собранные программой, агент обязан посмотреть сам (плагин media-check)
-MC_RAW="https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/media-check"
-for home in "$H" "$H"/profiles/*; do
-  [ -f "$home/config.yaml" ] || continue
-  mkdir -p "$home/plugins/media-check"
-  for f in __init__.py plugin.yaml; do
-    if [ -n "${MC_SRC:-}" ]; then cp "$MC_SRC/$f" "$home/plugins/media-check/$f"; else curl -fsSL "$MC_RAW/$f" -o "$home/plugins/media-check/$f"; fi
+#    + плагин busy-ack-ru: написал агенту, пока он занят, — он коротко отвечает «Принял» по-русски
+RAW="https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect"
+for plugin in media-check busy-ack-ru; do
+  case "$plugin" in media-check) SRC="${MC_SRC:-}";; busy-ack-ru) SRC="${BA_SRC:-}";; esac
+  for home in "$H" "$H"/profiles/*; do
+    [ -f "$home/config.yaml" ] || continue
+    mkdir -p "$home/plugins/$plugin"
+    for f in __init__.py plugin.yaml; do
+      if [ -n "$SRC" ]; then cp "$SRC/$f" "$home/plugins/$plugin/$f"; else curl -fsSL "$RAW/$plugin/$f" -o "$home/plugins/$plugin/$f"; fi
+    done
+    mapfile -t PA < <(profile_args "$home")
+    "$HB" "${PA[@]}" plugins enable "$plugin" >/dev/null 2>&1 || true
   done
-  if [ "$home" = "$H" ]; then "$HB" plugins enable media-check >/dev/null 2>&1 || true
-  else "$HB" --profile "$(basename "$home")" plugins enable media-check >/dev/null 2>&1 || true; fi
 done
 
 # Проверка: хук блокирует снос дома и пропускает обычную команду
