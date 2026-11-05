@@ -65,16 +65,21 @@ done
 
 # 3б. Раннее сжатие разговора во всех профилях: без него один длинный разговор разрастается
 #     до сотен тысяч токенов, агент пересылает их на каждом шаге — лимит ChatGPT кончается
-#     за утро, ответы идут минутами (ученица 05.11.2026). 0.1 окна ≈ 100 тыс. токенов.
+#     за утро, ответы идут минутами (ученица 05.11.2026). Главное — потолок threshold_tokens:
+#     для окон меньше 512 тыс. Hermes сам поднимает процентный порог до 75%, потолок — нет.
+in_block() { sed -n '/^compression:/,/^[^ ]/p' "$2" | grep -q "^  $1:"; }
 for cfg in "$H/config.yaml" "$H"/profiles/*/config.yaml; do
   [ -f "$cfg" ] || continue
-  if ! grep -q "^compression:" "$cfg"; then
-    printf 'compression:\n  enabled: true\n  threshold: 0.1\n' >> "$cfg"
-  elif sed -n '/^compression:/,/^[^ ]/p' "$cfg" | grep -q '^  threshold:'; then
-    sed -i '/^compression:/,/^[^ ]/ s/^  threshold: .*/  threshold: 0.1/' "$cfg"
-  else
-    sed -i '/^compression:/a\  threshold: 0.1' "$cfg"
-  fi
+  grep -q "^compression:" "$cfg" || printf 'compression:\n  enabled: true\n' >> "$cfg"
+  for kv in "threshold 0.1" "threshold_tokens 100000"; do
+    # shellcheck disable=SC2086
+    set -- $kv
+    if in_block "$1" "$cfg"; then
+      sed -i "/^compression:/,/^[^ ]/ s/^  $1: .*/  $1: $2/" "$cfg"
+    else
+      sed -i "/^compression:/a\\  $1: $2" "$cfg"
+    fi
+  done
 done
 
 # 4. Проверка перед «готово»: хук verify-gate.py во всех профилях + правило в характере
