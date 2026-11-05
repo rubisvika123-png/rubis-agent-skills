@@ -10,7 +10,7 @@ printf 'model:\n  default: x\nhooks_auto_accept: false\n' > "$T/h/config.yaml"
 printf 'hooks:\n  pre_tool_call: []\n' > "$T/h/profiles/second/config.yaml"
 printf '#!/bin/sh\necho "$*" >> %s/calls\n' "$T" > "$T/bin/hermes"; chmod +x "$T/bin/hermes"
 printf "# Агент\n" > "$T/h/SOUL.md"
-run() { HERMES_DIR="$T/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" bash setup.sh; }
+run() { HERMES_DIR="$T/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" MC_SRC="$PWD/media-check" bash setup.sh; }
 out=$(run) || fail "setup failed: $out"
 [ -x "$T/h/hooks/protect-home.py" ] || fail "hook not installed"
 grep -q "command: $T/h/hooks/protect-home.py" "$T/h/config.yaml" || fail "hook not in config"
@@ -22,6 +22,8 @@ grep -q "session_reset.mode both --force" "$T/calls" && grep -q "display.show_co
 grep -q "verify-gate.py" "$T/h/config.yaml" || fail "gate not in main config"
 grep -q "verify-gate.py" "$T/h/profiles/second/config.yaml" || fail "gate not added next to existing hooks"
 grep -q "Проверка перед «готово»" "$T/h/SOUL.md" || fail "rule not in SOUL"
+[ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
+grep -q "plugins enable media-check" "$T/calls" && grep -q -- "--profile second plugins enable media-check" "$T/calls" || fail "media-check not enabled"
 run >/dev/null
 [ "$(grep -c 'verify-gate.py' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated gate"
 [ "$(grep -c 'Проверка перед «готово»' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated rule"
