@@ -63,6 +63,20 @@ for kv in \
   "$HB" config set $kv --force >/dev/null
 done
 
+# 3б. Раннее сжатие разговора во всех профилях: без него один длинный разговор разрастается
+#     до сотен тысяч токенов, агент пересылает их на каждом шаге — лимит ChatGPT кончается
+#     за утро, ответы идут минутами (ученица 05.11.2026). 0.1 окна ≈ 100 тыс. токенов.
+for cfg in "$H/config.yaml" "$H"/profiles/*/config.yaml; do
+  [ -f "$cfg" ] || continue
+  if ! grep -q "^compression:" "$cfg"; then
+    printf 'compression:\n  enabled: true\n  threshold: 0.1\n' >> "$cfg"
+  elif sed -n '/^compression:/,/^[^ ]/p' "$cfg" | grep -q '^  threshold:'; then
+    sed -i '/^compression:/,/^[^ ]/ s/^  threshold: .*/  threshold: 0.1/' "$cfg"
+  else
+    sed -i '/^compression:/a\  threshold: 0.1' "$cfg"
+  fi
+done
+
 # 4. Проверка перед «готово»: хук verify-gate.py во всех профилях + правило в характере
 GATE_RAW="https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/verify-gate.py"
 GATE="$H/hooks/verify-gate.py"

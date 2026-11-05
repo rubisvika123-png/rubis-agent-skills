@@ -7,7 +7,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*"; exit 1; }
 mkdir -p "$T/h/profiles/second" "$T/bin"
 printf 'model:\n  default: x\nhooks_auto_accept: false\n' > "$T/h/config.yaml"
-printf 'hooks:\n  pre_tool_call: []\n' > "$T/h/profiles/second/config.yaml"
+printf 'hooks:\n  pre_tool_call: []\ncompression:\n  enabled: true\n  threshold: 0.75\n  target_ratio: 0.2\n' > "$T/h/profiles/second/config.yaml"
 printf '#!/bin/sh\necho "$*" >> %s/calls\n' "$T" > "$T/bin/hermes"; chmod +x "$T/bin/hermes"
 printf "# Агент\n" > "$T/h/SOUL.md"
 run() { HERMES_DIR="$T/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" MC_SRC="$PWD/media-check" bash setup.sh; }
@@ -24,7 +24,11 @@ grep -q "verify-gate.py" "$T/h/profiles/second/config.yaml" || fail "gate not ad
 grep -q "Проверка перед «готово»" "$T/h/SOUL.md" || fail "rule not in SOUL"
 [ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
 grep -q "plugins enable media-check" "$T/calls" && grep -q -- "--profile second plugins enable media-check" "$T/calls" || fail "media-check not enabled"
+grep -A3 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold: 0.1$' || fail "profile compression not lowered"
+grep -q 'target_ratio: 0.2' "$T/h/profiles/second/config.yaml" || fail "compression block damaged"
+grep -A3 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
 run >/dev/null
+[ "$(grep -c '^compression:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated compression"
 [ "$(grep -c 'verify-gate.py' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated gate"
 [ "$(grep -c 'Проверка перед «готово»' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated rule"
 [ "$(grep -c '^hooks:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated hooks"
