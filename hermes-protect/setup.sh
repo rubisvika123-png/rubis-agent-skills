@@ -10,7 +10,7 @@
 # 4) Проверка перед «готово» (05.11.2026): агент на GPT не сдаёт изменённые файлы, не перечитав их
 #    (хук verify-gate.py + правило в SOUL.md). GPT чаще говорит «готово», не проверив.
 # Повторный запуск безопасен. Env для тестов: HERMES_DIR (по умолчанию ~/.hermes),
-# HERMES_BIN (по умолчанию hermes), PROTECT_SRC / GATE_SRC (локальные файлы вместо скачивания).
+# HERMES_BIN (по умолчанию hermes), PROTECT_SRC / GATE_SRC / MC_SRC (локальные файлы вместо скачивания).
 set -euo pipefail
 
 H="${HERMES_DIR:-$HOME/.hermes}"
@@ -92,6 +92,18 @@ for soul in "$H/SOUL.md" "$H"/profiles/*/SOUL.md; do
 Нашёл ошибку — исправляю и проверяю снова. В ответе одной строкой: «Проверил: …» — что открыл и что увидел.
 Не проверил — не пишу «готово», а честно говорю, что осталось проверить.
 RULE
+done
+
+# 5. Третья ступень: видео/PDF/картинки, собранные программой, агент обязан посмотреть сам (плагин media-check)
+MC_RAW="https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/media-check"
+for home in "$H" "$H"/profiles/*; do
+  [ -f "$home/config.yaml" ] || continue
+  mkdir -p "$home/plugins/media-check"
+  for f in __init__.py plugin.yaml; do
+    if [ -n "${MC_SRC:-}" ]; then cp "$MC_SRC/$f" "$home/plugins/media-check/$f"; else curl -fsSL "$MC_RAW/$f" -o "$home/plugins/media-check/$f"; fi
+  done
+  if [ "$home" = "$H" ]; then "$HB" plugins enable media-check >/dev/null 2>&1 || true
+  else "$HB" --profile "$(basename "$home")" plugins enable media-check >/dev/null 2>&1 || true; fi
 done
 
 # Проверка: хук блокирует снос дома и пропускает обычную команду
