@@ -39,5 +39,7 @@ run >/dev/null
 [ "$(grep -c 'threshold_tokens:' "$T/h/profiles/second/config.yaml")" = 1 ] || fail "re-run duplicated cap"
 [ "$(grep -c 'verify-gate.py' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated gate"
 [ "$(grep -c 'Проверка перед «готово»' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated rule"
+grep -q "Что важнее, если правила спорят" "$T/h/SOUL.md" || fail "priority rule not in SOUL"
+[ "$(grep -c 'Что важнее, если правила спорят' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated priority rule"
 [ "$(grep -c '^hooks:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated hooks"
 echo "ALL TESTS PASSED"
