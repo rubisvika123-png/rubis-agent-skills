@@ -32,6 +32,21 @@ duplicate reply, there's no separate tracking file to go stale.
    - **YouTube Data API v3** enabled.
    - The owner's email added as a **Test user** on the OAuth consent screen
      (if the app is in "Testing").
+   - **Move the app out of "Testing" — otherwise access dies after 7 days.** Google expires
+     the refresh token of a "Testing" app with an External user type 7 days after consent
+     (Google Auth Platform docs, «Manage App Audience»), so posting silently stops in a week.
+     Fix (owner's clicks, you guide): Google Auth Platform → Audience → **Publish app** →
+     status "In production". Do NOT submit for verification — an unverified app is fine for
+     the owner's own channel (they click "Advanced → Go to …" on the warning screen).
+     New projects (Nov 2026): Publish app is greyed out until Branding has an app name,
+     support email, **home page URL** and **privacy policy URL**. Links to Instagram /
+     YouTube / Google Sites don't work (the domain must go into "Authorized domains").
+     Free way: build two plain pages on GitHub Pages yourself (`<github-user>.github.io`:
+     a home page "what this app does" + a privacy policy "used only by the owner, only
+     their channel and Drive folder, data shared with no one"), check both open, have the
+     owner paste them in Branding, add `<github-user>.github.io` to Authorized domains,
+     upload NO logo (a logo triggers verification), Save, then Publish app.
+     After publishing, run the access step (Setup 3) again — the old Testing token still expires.
    If the owner already did this for `youtube-shorts-autoposter`, the SAME
    Cloud project and OAuth client can be reused — just need YouTube Data
    API v3 already enabled there (it is, that skill needs it too).
