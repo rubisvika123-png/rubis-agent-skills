@@ -42,4 +42,15 @@ run >/dev/null
 grep -q "Что важнее, если правила спорят" "$T/h/SOUL.md" || fail "priority rule not in SOUL"
 [ "$(grep -c 'Что важнее, если правила спорят' "$T/h/SOUL.md")" = 1 ] || fail "re-run duplicated priority rule"
 [ "$(grep -c '^hooks:' "$T/h/config.yaml")" = 1 ] || fail "re-run duplicated hooks"
+# Fresh Hermes 0.23 template: column-0 comments inside compression and its own threshold
+# further down; also a config already broken by the old script (two threshold keys).
+T2=$(mktemp -d); trap 'rm -rf "$T" "$T2"' EXIT
+mkdir -p "$T2/h"
+printf 'model:\n  default: x\ncompression:\n  threshold_tokens: 100000\n  threshold: 0.1\n  enabled: true\n# top-level comment inside the block\n  threshold: 0.50\n  target_ratio: 0.20\ndisplay:\n  x: 1\n' > "$T2/h/config.yaml"
+printf "# Агент\n" > "$T2/h/SOUL.md"
+HERMES_DIR="$T2/h" HERMES_BIN="$T/bin/hermes" PROTECT_SRC="$PWD/protect-home.py" GATE_SRC="$PWD/verify-gate.py" MC_SRC="$PWD/media-check" BA_SRC="$PWD/busy-ack-ru" bash setup.sh >/dev/null || fail "setup failed on template config"
+[ "$(grep -c '^  threshold:' "$T2/h/config.yaml")" = 1 ] || fail "duplicate threshold not repaired"
+grep -q '^  threshold: 0.1$' "$T2/h/config.yaml" || fail "template threshold not lowered"
+[ "$(grep -c '^  threshold_tokens:' "$T2/h/config.yaml")" = 1 ] || fail "duplicate cap"
+python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d['compression']['threshold']==0.1 and d['compression']['target_ratio']==0.2 and d['display']['x']==1" "$T2/h/config.yaml" || fail "config not valid YAML after repair"
 echo "ALL TESTS PASSED"
