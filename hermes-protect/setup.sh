@@ -44,6 +44,40 @@ hooks_auto_accept: true
 EOF
 done
 
+# 1б. Раннее сжатие (до «hermes config set»: кривой config.yaml от старой версии этого скрипта
+#     не даёт hermes запуститься, поэтому чиним его первым).
+#     Раннее сжатие разговора во всех профилях: без него один длинный разговор разрастается
+#     до сотен тысяч токенов, агент пересылает их на каждом шаге — лимит ChatGPT кончается
+#     за утро, ответы идут минутами (ученица 05.11.2026). Главное — потолок threshold_tokens:
+#     для окон меньше 512 тыс. Hermes сам поднимает процентный порог до 75%, потолок — нет.
+# Свежий Hermes (с 0.23) кладёт в config.yaml полный шаблон с комментариями в начале строки
+# посреди блока compression и своим threshold ниже — старая правка по тексту этого не видела,
+# дописывала второй threshold, и Hermes переставал запускаться (тест 09.11.2026). Поэтому
+# конец блока — только следующий ключ верхнего уровня, а лишние копии ключа удаляются.
+for cfg in "$H/config.yaml" "$H"/profiles/*/config.yaml; do
+  [ -f "$cfg" ] || continue
+  python3 - "$cfg" <<'PY'
+import re, sys
+p = sys.argv[1]
+lines = open(p, encoding="utf-8").read().split("\n")
+if "compression:" not in lines:
+    if lines and lines[-1] == "":
+        lines.pop()
+    lines += ["compression:", "  enabled: true", ""]
+start = lines.index("compression:")
+for key, val in (("threshold", "0.1"), ("threshold_tokens", "100000")):
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"[A-Za-z_]", lines[i])), len(lines))
+    hits = [i for i in range(start + 1, end) if re.match(rf"  {key}:", lines[i])]
+    if not hits:
+        lines.insert(start + 1, f"  {key}: {val}")
+        continue
+    lines[hits[0]] = f"  {key}: {val}"
+    for i in reversed(hits[1:]):
+        del lines[i]
+open(p, "w", encoding="utf-8").write("\n".join(lines))
+PY
+done
+
 # 2–3. Тихий режим и самообновление разговора — во всех профилях.
 #      busy_input_mode steer: сообщение, присланное во время работы, агент учитывает по ходу,
 #      а не бросает начатую задачу (раньше «ну что там?» обрывало длинную работу).
@@ -71,25 +105,6 @@ for home in "$H" "$H"/profiles/*; do
   for kv in "${SETTINGS[@]}"; do
     # shellcheck disable=SC2086
     "$HB" "${PA[@]}" config set $kv --force >/dev/null
-  done
-done
-
-# 3б. Раннее сжатие разговора во всех профилях: без него один длинный разговор разрастается
-#     до сотен тысяч токенов, агент пересылает их на каждом шаге — лимит ChatGPT кончается
-#     за утро, ответы идут минутами (ученица 05.11.2026). Главное — потолок threshold_tokens:
-#     для окон меньше 512 тыс. Hermes сам поднимает процентный порог до 75%, потолок — нет.
-in_block() { sed -n '/^compression:/,/^[^ ]/p' "$2" | grep -q "^  $1:"; }
-for cfg in "$H/config.yaml" "$H"/profiles/*/config.yaml; do
-  [ -f "$cfg" ] || continue
-  grep -q "^compression:" "$cfg" || printf 'compression:\n  enabled: true\n' >> "$cfg"
-  for kv in "threshold 0.1" "threshold_tokens 100000"; do
-    # shellcheck disable=SC2086
-    set -- $kv
-    if in_block "$1" "$cfg"; then
-      sed -i "/^compression:/,/^[^ ]/ s/^  $1: .*/  $1: $2/" "$cfg"
-    else
-      sed -i "/^compression:/a\\  $1: $2" "$cfg"
-    fi
   done
 done
 
