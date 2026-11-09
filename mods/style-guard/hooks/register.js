@@ -37,6 +37,24 @@ const SYSTEM = `Ты строгий редактор владельца аген
 Если в сообщении сказано, что черновик — расшифровка или дословные слова самого владельца
 (его кружок, голосовое, видео), это его настоящий слог: не требуй переписывать, verdict "ok".`
 
+// A text the owner already edited herself (dictated changes) is her own words:
+// the marketer marks it with «С правками владельца» (or «…Вики») and it goes out
+// unchecked. Liza 09.11.2026: the checker blocked Vika's own dictated edits 4×.
+const OWNER_EDITED = /с правками (владельца|вики)/i
+
+export function ownerEdited(text) {
+  return OWNER_EDITED.test(String(text || ''))
+}
+
+// The model kept "seeing" full stops at paragraph ends that weren't there, so
+// the code counts them and hands the model the fact instead.
+export function paragraphDots(text) {
+  return String(text || '')
+    .split(/\n\s*\n/)
+    .map((p) => p.replace(/<[^>]+>/g, '').trim())
+    .filter((p) => p && /[^.]\.$/.test(p))
+}
+
 export function parseVerdict(text) {
   try {
     const m = String(text || '').match(/\{[\s\S]*\}/)
@@ -50,10 +68,12 @@ export function parseVerdict(text) {
 
 async function judge($, text) {
   const style = (await $.fs.read((await $.env.get('STYLE_GUARD_FILE')) || STYLE_FILE)).slice(0, STYLE_CHARS)
+  const dots = paragraphDots(text)
   const r = await $.model.complete({
     model: 'sonnet',
     system: SYSTEM + '\n\nПРИМЕРЫ И ПРАВИЛА ВЛАДЕЛЬЦА:\n' + style,
-    prompt: 'СООБЩЕНИЕ МАРКЕТОЛОГА:\n' + text,
+    prompt: 'СООБЩЕНИЕ МАРКЕТОЛОГА:\n' + text + '\n\nФАКТ, ПОСЧИТАНО ПРОГРАММОЙ (про точки сам не суди, верь этому): ' +
+      (dots.length ? 'точка в конце абзаца есть в: ' + dots.map((p) => '«…' + p.slice(-40) + '»').join('; ') : 'ни один абзац не заканчивается точкой'),
     maxTokens: 700,
     timeoutMs: 60000,
   })
@@ -77,7 +97,7 @@ export function register(on) {
     // own approved words (Liza 05.10.2026: an approved post was blocked).
     if (String(e.chat_id || '').startsWith('-')) return next(e)
     const text = String(e.text || '')
-    if (text.length < MIN_CHARS || refusals >= MAX_REFUSALS) return next(e)
+    if (text.length < MIN_CHARS || refusals >= MAX_REFUSALS || ownerEdited(text)) return next(e)
     let v = null
     try { v = await judge($, text) } catch { return next(e) }
     if (!v || !v.hasDraft || !v.rewrite) return next(e)
