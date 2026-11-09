@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { parseVerdict } from '../hooks/register.js'
+import { parseVerdict, paragraphDots } from '../hooks/register.js'
 
 const LONG = 'Вот черновик поста для канала: ' + 'Это не просто инструмент — это настоящий прорыв. '.repeat(8)
 
@@ -62,4 +62,22 @@ test('after two refusals in one turn the third attempt goes out', async ($, on) 
 test('verdict parsing tolerates prose around the JSON and rejects junk', () => {
   expect(parseVerdict('вот: {"has_draft":true,"verdict":"rewrite","problems":["a"]} всё')!.rewrite).toBe(true)
   expect(parseVerdict('нет json')).toBe(null)
+})
+
+test('a text marked as already edited by the owner goes out unchecked', async ($, on) => {
+  const asked = wire(on, '{"has_draft":true,"verdict":"rewrite","problems":["x"]}')
+  const out = await $.tool.call({ tool: 'mcp__dashi-channel__reply', chat_id: '1', text: 'Рассылка с правками Вики:\n\n' + LONG })
+  expect(out).toEqual({ result: 'sent' })
+  expect(asked.length).toBe(0)
+})
+
+test('paragraph-end full stops are counted by code, not guessed', async () => {
+  expect(paragraphDots('<b>Заголовок</b>\n\nТекст без точки))\n\nВау? Вау!)')).toEqual([])
+  expect(paragraphDots('Первый абзац.\n\nВторой...\n\nТретий')).toEqual(['Первый абзац.'])
+})
+
+test('the model is told the counted fact about full stops', async ($, on) => {
+  const asked = wire(on, '{"has_draft":false,"verdict":"ok","problems":[]}')
+  await $.tool.call({ tool: 'mcp__dashi-channel__reply', chat_id: '1', text: LONG.replace(/\.\s*$/, '') })
+  expect(JSON.stringify(asked[0])).toContain('ФАКТ, ПОСЧИТАНО ПРОГРАММОЙ')
 })
