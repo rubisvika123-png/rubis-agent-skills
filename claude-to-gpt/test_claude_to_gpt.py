@@ -128,6 +128,9 @@ def main():
         assert "только из файлов владельца" in soul, "invented prices 250/350k"
         assert "всё равно даю план" in soul, "answered only with a question"
         assert "сверяю с источником" in soul, "repeated stale board statuses as facts"
+        # Fable 5.1 blind verdict 10.11
+        assert "ровно N шагов" in soul and "командой date" in soul and "сортирую по риску" in soul
+        assert "предложение, нужно твоё да" in soul and "ни имён файлов" in soul
         # 09.11: Hermes agents have no tmux rooms — handoffs go through the shared Hermes kanban board
         assert "tmux send-keys" not in soul and "комнате tmux" not in soul
         assert "hermes kanban create" in soul and "--assignee" in soul and "hermes profile list" in soul
