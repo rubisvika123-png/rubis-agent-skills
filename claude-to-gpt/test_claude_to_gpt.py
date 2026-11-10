@@ -2,7 +2,7 @@
 """Tests for claude-to-gpt.py on a synthetic agent: dry run writes nothing, --apply builds
 SOUL/.env/config from the Claude layout. A stub `hermes` stands in for profile create."""
 import re
-import json, os, stat, subprocess, sys, tempfile
+import glob, json, os, stat, subprocess, sys, tempfile
 
 import yaml
 
@@ -147,11 +147,15 @@ def main():
         assert "через `reply`" not in soul and "Бриф Вике — только в Telegram." in soul
         assert "task-recipes" in r.stdout, "the one-time recipes command must be printed"
 
-        # Re-run keeps one token line and backs up the previous SOUL.
+        # Re-run keeps one token line and backs up the previous SOUL without losing the very first backup
+        # (10.11: students re-run the converter to get new rules).
+        first = os.path.join(pdir, "SOUL.md.bak-before-claude-to-gpt")
+        open(first, "w").write("ORIGINAL BEFORE GPT")
         r = run(home, agent, bindir, "--apply")
         assert r.returncode == 0, r.stderr
         assert open(os.path.join(pdir, ".env")).read().count("TELEGRAM_BOT_TOKEN=") == 1
-        assert os.path.isfile(os.path.join(pdir, "SOUL.md.bak-before-claude-to-gpt"))
+        assert open(first).read() == "ORIGINAL BEFORE GPT", "first backup overwritten on re-run"
+        assert glob.glob(os.path.join(pdir, "SOUL.md.bak-rerun-*")), "previous GPT SOUL not backed up"
 
         # No token → refuse.
         open(os.path.join(agent, "secrets/channel.env"), "w").write("")
