@@ -131,6 +131,9 @@ def main():
         # Fable 5.1 blind verdict 10.11
         assert "ровно N шагов" in soul and "командой date" in soul and "сортирую по риску" in soul
         assert "предложение, нужно твоё да" in soul and "ни имён файлов" in soul
+        # Fable round 2: GPT answered from memory (0 lookups on SSH, skipped the Hiddify card)
+        assert "Исключение — проверка фактов" in soul and "course-errors" in soul
+        assert "ждёт владельца / ждёт внешних / ждёт агента" in soul and "не повторяю как факт" in soul
         # 09.11: Hermes agents have no tmux rooms — handoffs go through the shared Hermes kanban board
         assert "tmux send-keys" not in soul and "комнате tmux" not in soul
         assert "hermes kanban create" in soul and "--assignee" in soul and "hermes profile list" in soul
