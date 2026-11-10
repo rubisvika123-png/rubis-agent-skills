@@ -15,7 +15,7 @@ switch-over is a separate, deliberate step printed at the end.
 
 Usage: claude-to-gpt.py AGENT_DIR PROFILE [--apply]
 """
-import argparse, urllib.request, glob, json, os, re, subprocess, sys
+import argparse, urllib.request, glob, json, os, re, subprocess, sys, time
 
 import yaml
 
@@ -279,7 +279,9 @@ def apply(p, profile, home):
         subprocess.run(["hermes", "profile", "create", profile, "--clone"], check=True)
     soul = os.path.join(pdir, "SOUL.md")
     if os.path.isfile(soul):
-        os.replace(soul, soul + ".bak-before-claude-to-gpt")
+        first = soul + ".bak-before-claude-to-gpt"
+        # Re-run (new rules): keep the very first pre-GPT backup, save the current GPT SOUL beside it.
+        os.replace(soul, first if not os.path.exists(first) else soul + time.strftime(".bak-rerun-%Y%m%d-%H%M%S"))
     with open(soul, "w", encoding="utf-8") as f:
         f.write(p["soul"])
 
