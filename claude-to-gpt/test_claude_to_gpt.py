@@ -26,6 +26,11 @@ def make_agent(root):
         "\n## Напоминания (будильник)\n\nСтавлю будильник командой `/root/ai-assistant/scripts/remind-add.sh \"2026-08-26 09:00\" \"про вебинар\"`.\n"
         "Время — всегда по часовому поясу владельца: **Europe/Moscow**.\nКогда сработает — разбудит строкой «СРАБОТАЛ БУДИЛЬНИК».\n"
         "\n## Безопасность\n- Не показываю ключи.\n")
+    os.makedirs(os.path.join(agent, "state"))
+    open(os.path.join(agent, "state/reminders.tsv"), "w").write("2099-01-01T10:00+00:00\tтест\n")
+    open(os.path.join(agent, "prices.md"), "w").write("Курс 70 000 ₽\n")
+    os.makedirs(os.path.join(home, "second-brain"))
+    open(os.path.join(home, "second-brain/team-tasks.md"), "w").write("| задача | сделано |\n")
     open(os.path.join(agent, "secrets/channel.env"), "w").write(
         "TELEGRAM_BOT_TOKEN=111:FAKE\nGROQ_API_KEY=gsk_fake\nTELEGRAM_ALLOWED_USER_IDS=999\n")
     json.dump({"allowed_chat_ids": [555, 777]},
@@ -76,6 +81,13 @@ def main():
 
         r = run(home, agent, bindir, "--apply")
         assert r.returncode == 0, r.stderr
+        # 10.11: facts-inject puts board/reminders/prices on every message
+        facts = open(os.path.join(pdir, "plugins/facts-inject/facts.txt")).read().splitlines()
+        assert facts[0] == "tz=3", facts
+        assert facts[1] == os.path.join(home, "second-brain/team-tasks.md") + "|tail=40", facts
+        assert os.path.join(agent, "state/reminders.tsv") in facts and os.path.join(agent, "prices.md") in facts, facts
+        assert "facts-inject" in yaml.safe_load(open(os.path.join(pdir, "config.yaml")))["plugins"]["enabled"]
+        assert os.path.isfile(os.path.join(pdir, "plugins/facts-inject/__init__.py"))
         soul = open(os.path.join(pdir, "SOUL.md")).read()
         assert soul.startswith("# Техспец Тест"), soul[:80]
         assert "Как я довожу работу до конца" in soul
