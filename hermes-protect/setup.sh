@@ -164,15 +164,18 @@ done
 
 # 5. Третья ступень: видео/PDF/картинки, собранные программой, агент обязан посмотреть сам (плагин media-check)
 #    + плагин busy-ack-ru: написал агенту, пока он занят, — он коротко отвечает «Принял» по-русски
+#    + плагин facts-inject (10.11): в каждое сообщение подкладывается сегодняшняя дата и файлы из facts.txt
+#      (переносчик claude-to-gpt заполняет его сам; здесь — только дата, если файла ещё нет)
 RAW="https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect"
-for plugin in media-check busy-ack-ru; do
-  case "$plugin" in media-check) SRC="${MC_SRC:-}";; busy-ack-ru) SRC="${BA_SRC:-}";; esac
+for plugin in media-check busy-ack-ru facts-inject; do
+  case "$plugin" in media-check) SRC="${MC_SRC:-}";; busy-ack-ru) SRC="${BA_SRC:-}";; facts-inject) SRC="${FI_SRC:-}";; esac
   for home in "$H" "$H"/profiles/*; do
     [ -f "$home/config.yaml" ] || continue
     mkdir -p "$home/plugins/$plugin"
     for f in __init__.py plugin.yaml; do
       if [ -n "$SRC" ]; then cp "$SRC/$f" "$home/plugins/$plugin/$f"; else curl -fsSL "$RAW/$plugin/$f" -o "$home/plugins/$plugin/$f"; fi
     done
+    if [ "$plugin" = facts-inject ] && [ ! -f "$home/plugins/$plugin/facts.txt" ]; then echo "tz=3" > "$home/plugins/$plugin/facts.txt"; fi
     mapfile -t PA < <(profile_args "$home")
     "$HB" "${PA[@]}" plugins enable "$plugin" >/dev/null 2>&1 || true
   done

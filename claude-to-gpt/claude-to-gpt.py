@@ -124,6 +124,47 @@ def find_memory_dirs(agent_dir, home):
     return found
 
 
+FACT_NAME = re.compile(r"price|цен|product|продукт|point-a|offer|оффер|тариф", re.I)
+SKIP_DIRS = {"node_modules", ".git", "dashi-plugin-claude-code", ".claude", "backups", "secrets", "__pycache__"}
+
+
+def find_fact_files(agent_dir, home):
+    """Files the GPT agent must see on every message (Vika 10.11.2026, blind test round 4):
+    team board (last 40 lines), the owner's reminders, small price/product files, the error base index."""
+    found = []
+    boards = [os.path.join(home, "second-brain/team-tasks.md")]
+    for root, dirs, files in os.walk(agent_dir):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        if root[len(agent_dir):].count(os.sep) >= 3:
+            dirs[:] = []
+        for f in sorted(files):
+            path = os.path.join(root, f)
+            if f == "team-tasks.md":
+                boards.append(path)
+            elif f.endswith(".tsv") and "remind" in f:
+                found.append(path)
+            elif f.endswith(".md") and FACT_NAME.search(f) and os.path.getsize(path) <= 12000:
+                found.append(path)
+    board = next((b for b in boards if os.path.isfile(b)), None)
+    if board:
+        found.insert(0, board + "|tail=40")
+    for idx in sorted(glob.glob(os.path.join(home, "*/course-errors/INDEX.md"))) + [os.path.join(agent_dir, "course-errors/INDEX.md")]:
+        if os.path.isfile(idx) and idx not in found:
+            found.append(idx)
+            break
+    return found
+
+
+def owner_tz(agent_dir):
+    """Owner's UTC offset for «today» in the facts: +7 for Thailand, else Moscow."""
+    text = ""
+    for name in ("CLAUDE.md", "USER.md"):
+        path = os.path.join(agent_dir, name)
+        if os.path.isfile(path):
+            text += open(path, encoding="utf-8", errors="ignore").read()
+    return 7 if re.search(r"UTC\+7|Asia/Bangkok|Таиланд|Пхукет", text) else 3
+
+
 def read_env(path):
     env = {}
     if os.path.isfile(path):
@@ -266,6 +307,8 @@ def plan(agent_dir, profile, home):
         "profile_dir": os.path.join(home, ".hermes/profiles", profile),
         "soul": build_soul(agent_dir, mem),
         "memory_dirs": mem,
+        "facts": find_fact_files(agent_dir, home),
+        "tz": owner_tz(agent_dir),
         "token": env.get("TELEGRAM_BOT_TOKEN", ""),
         "allowed": allowed_ids(agent_dir, env),
         "groq": env.get("GROQ_API_KEY", ""),
@@ -330,8 +373,12 @@ def apply(p, profile, home):
     if hooks:
         cfg["hooks"] = hooks
         cfg["hooks_auto_accept"] = True
-    for plugin in ("media-check", "busy-ack-ru"):  # look at built media; Russian «Принял» while busy
+    # facts-inject (10.11): date, board, reminders, prices, error base on every message — GPT skips checking
+    for plugin in ("media-check", "busy-ack-ru", "facts-inject"):  # look at built media; Russian «Принял» while busy
         if install_plugin(pdir, plugin):
+            if plugin == "facts-inject":
+                with open(os.path.join(pdir, "plugins", plugin, "facts.txt"), "w", encoding="utf-8") as f:
+                    f.write("\n".join([f"tz={p['tz']}"] + p["facts"]) + "\n")
             pl = cfg.setdefault("plugins", {})
             pl["enabled"] = sorted(set((pl.get("enabled") or []) + [plugin]))
     with open(cfg_path, "w", encoding="utf-8") as f:
@@ -433,7 +480,10 @@ def install_plugin(pdir, name):
     """Put a Hermes plugin into the profile. Source: /root/coder/hermes/<name> next to this
     repo, else the skills repo. Returns True when installed."""
     dst = os.path.join(pdir, "plugins", name)
-    local = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hermes", name)
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    local = os.path.join(root, "hermes", name)
+    if not os.path.isdir(local):  # skills repo layout: hermes-protect/<name> next to claude-to-gpt/
+        local = os.path.join(root, "hermes-protect", name)
     os.makedirs(dst, exist_ok=True)
     try:
         for f in ("__init__.py", "plugin.yaml"):
@@ -468,6 +518,7 @@ def main():
     print(f"  бот: {'есть' if p['token'] else 'НЕТ'}; отвечает: {', '.join(p['allowed']) or 'НИКОМУ'}; "
           f"голосовые (Groq): {'есть' if p['groq'] else 'нет'}")
     print(f"  навыки: {', '.join(p['skills']) or 'нет'}")
+    print(f"  факты в каждое сообщение: {', '.join(os.path.basename(x.split('|')[0]) for x in p['facts']) or 'только дата'}")
     if problems:
         sys.exit("ОШИБКА: " + "; ".join(problems))
     if not a.apply:
