@@ -124,6 +124,10 @@ def main():
         assert agent in rtxt, "recipes must point at the agent's own Claude folder"
         assert "## Рецепты задач" in soul and "RECIPES.md" in soul
         assert "целиком в ответе" in soul, "the reel was hidden in a file on 09.11"
+        # Blind GPT-vs-Claude test 10.11: GPT invented prices, answered "send numbers first", repeated stale statuses.
+        assert "только из файлов владельца" in soul, "invented prices 250/350k"
+        assert "всё равно даю план" in soul, "answered only with a question"
+        assert "сверяю с источником" in soul, "repeated stale board statuses as facts"
         # 09.11: Hermes agents have no tmux rooms — handoffs go through the shared Hermes kanban board
         assert "tmux send-keys" not in soul and "комнате tmux" not in soul
         assert "hermes kanban create" in soul and "--assignee" in soul and "hermes profile list" in soul
