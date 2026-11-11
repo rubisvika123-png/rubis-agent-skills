@@ -10,7 +10,7 @@
 # 4) Проверка перед «готово» (05.11.2026): агент на GPT не сдаёт изменённые файлы, не перечитав их
 #    (хук verify-gate.py + правило в SOUL.md). GPT чаще говорит «готово», не проверив.
 # Повторный запуск безопасен. Env для тестов: HERMES_DIR (по умолчанию ~/.hermes),
-# HERMES_BIN (по умолчанию hermes), PROTECT_SRC / GATE_SRC / MC_SRC (локальные файлы вместо скачивания).
+# HERMES_BIN (по умолчанию hermes), HERMES_SRC (где искать исходники Hermes), PROTECT_SRC / GATE_SRC / MC_SRC (локальные файлы вместо скачивания).
 set -euo pipefail
 
 H="${HERMES_DIR:-$HOME/.hermes}"
@@ -180,6 +180,20 @@ for plugin in media-check busy-ack-ru facts-inject; do
     "$HB" "${PA[@]}" plugins enable "$plugin" >/dev/null 2>&1 || true
   done
 done
+
+# 5. Новый Hermes (с ~24.09.2026) не применяет session_reset без плагина — без него разговор не
+#    обновляется ночью и после тишины, раздувается и тормозит. Ставим плагин, только если он нужен.
+SR=hermes-session-reset-policy
+SRC_DIRS="${HERMES_SRC:-$H/hermes-agent /usr/local/lib/hermes-agent}"
+# shellcheck disable=SC2086
+if grep -rqs "is no longer applied" $SRC_DIRS --include=*.py; then
+  for home in "$H" "$H"/profiles/*; do
+    [ -f "$home/config.yaml" ] || continue
+    mapfile -t PA < <(profile_args "$home")
+    [ -d "$home/plugins/$SR" ] || "$HB" "${PA[@]}" plugins install "$SR" >/dev/null 2>&1 || true
+    "$HB" "${PA[@]}" plugins enable "$SR" >/dev/null 2>&1 || true
+  done
+fi
 
 # Проверка: хук блокирует снос дома и пропускает обычную команду
 probe() { printf '{"tool_name":"terminal","cwd":"/root","tool_input":{"command":"%s"}}' "$1" | python3 "$HOOK"; }
