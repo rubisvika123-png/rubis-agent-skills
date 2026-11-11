@@ -107,13 +107,21 @@ hermes_agents() {
     for w in "$home"/.config/systemd/user/default.target.wants/hermes-gateway*.service; do
       [ -e "$w" ] || continue
       u=$(basename "$w"); p=${u#hermes-gateway}; p=${p%.service}; p=${p#-}
-      [ -n "$p" ] && echo "$u=$home/.hermes/profiles/$p" || echo "$u=$home/.hermes"
+      if [ -n "$p" ]; then echo "$u=$home/.hermes/profiles/$p"; continue; fi
+      # host gateway: the root profile if it is an agent, plus (new Hermes, one gateway for all)
+      # every profile with a bot and no gateway unit of its own
+      grep -qs '^TELEGRAM_BOT_TOKEN=.' "$home/.hermes/.env" && echo "$u=$home/.hermes"
+      grep -qs "does not get a gateway of its own" "$home/.hermes/hermes-agent/hermes_cli/gateway.py" ${HERMES_SRC_PROBE:-/usr/local/lib/hermes-agent/hermes_cli/gateway.py} || continue   # old Hermes: profiles have their own gateways
+      for pd in "$home"/.hermes/profiles/*/; do
+        pd=${pd%/}; [ -e "$home/.config/systemd/user/hermes-gateway-${pd##*/}.service" ] && continue
+        grep -qs '^TELEGRAM_BOT_TOKEN=.' "$pd/.env" && echo "$u=$pd"
+      done
     done
   done
 }
 while IFS='=' read -r unit pdir; do
   [ -n "$unit" ] || continue
-  user=$(stat -c %U "$pdir" 2>/dev/null || echo root); h="агент на GPT $unit"
+  user=$(stat -c %U "$pdir" 2>/dev/null || echo root); h="агент на GPT ${pdir##*/} ($unit)"
   [ "$($SYSTEMCTL --user -M "$user@" is-active "$unit" 2>/dev/null)" = active ] && ok "$h: работает" || bad "$h: не запущен"
   grep -qsF "[$unit]" "${wd_scripts[@]:-/dev/null}" && ok "$h: под присмотром сторожа" || bad "$h: сторож за ним не следит (нет в HERMES)"
   [ -e "${AUDIT_LINGER_DIR:-/var/lib/systemd/linger}/$user" ] && ok "$h: переживёт перезагрузку" || bad "$h: не переживёт перезагрузку сервера (нет linger)"

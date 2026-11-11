@@ -36,6 +36,10 @@ for WD in "$@"; do
   printf '{"credential_pool":{"openai-codex":[{"last_status":"ok"}]}}' >"$H/auth.json"
   for x in a b; do printf '{"credential_pool":{"openai-codex":[{"last_status":"exhausted","last_error_reset_at":%s}]}}' "$later" >"$H/profiles/$x/auth.json"; done
   touch "$WORK/home/.config/systemd/user/hermes-gateway-b.service"   # b runs its own (old-style) gateway
+  export HERMES_SRC_PROBE="$WORK/old-gateway.py"; echo "old hermes" >"$HERMES_SRC_PROBE"
+  NOTIFIED=(); HLIMIT_NOTIFIED=(); check_hermes_limit hermes-gateway.service "$H" Техспец
+  [ ${#NOTIFIED[@]} -eq 0 ] || fail "old Hermes: host gateway must not speak for profiles"
+  echo "Profile X does not get a gateway of its own." >"$HERMES_SRC_PROBE"
   NOTIFIED=(); HLIMIT_NOTIFIED=(); check_hermes_limit hermes-gateway.service "$H" Техспец
   [ ${#NOTIFIED[@]} -eq 1 ] || fail "host gateway: want 1 alert (profile a), got ${#NOTIFIED[@]}"
   [ "${NOTIFIED[0]%%|*}" = "$H/profiles/a/.env" ] || fail "host gateway: alert not from profile a's bot: ${NOTIFIED[0]}"
