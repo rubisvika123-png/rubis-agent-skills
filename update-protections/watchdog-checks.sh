@@ -209,6 +209,8 @@ check_hermes_limit() {
   _hermes_limit_one "$unit" "$dir" "$who"
   [ "$unit" = hermes-gateway.service ] || return 0
   root="${dir%/profiles/*}"; home="${root%/.hermes}"
+  # only new Hermes serves profiles from the host gateway; on old Hermes they run their own
+  grep -qs "does not get a gateway of its own" "$home/.hermes/hermes-agent/hermes_cli/gateway.py" ${HERMES_SRC_PROBE:-/usr/local/lib/hermes-agent/hermes_cli/gateway.py} || return 0
   for p in "$root"/profiles/*/; do
     p="${p%/}"; name="${p##*/}"
     [ "$p" = "$dir" ] && continue
