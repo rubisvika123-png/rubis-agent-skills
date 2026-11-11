@@ -41,6 +41,12 @@ cp -r rubis-agent-skills/<название-навыка> ~/.claude/skills/
   недоступен: характер, вся память, навыки и тот же бот в Telegram. Пошагово — в уроке
   «Создание агента с нуля на GPT».
 
+- **[update-protections](update-protections/)** — «обнови защиты»: одной командой догоняет
+  агентов на сервере до защит команды Виктории (новый мост, сторож ответа, моды лимита и
+  толкача, проверки входа в стороже, fail2ban) и в конце показывает проверку. Повторный
+  запуск безопасен, свои доработки моста не трогает:
+  `curl -fsSL https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/update-protections/update.sh | bash`
+
 ## Моды
 
 **[mods](mods/)** — четыре дополнения к самой программе Claude Code: предупреждение о
