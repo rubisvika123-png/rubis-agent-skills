@@ -215,5 +215,9 @@ if [ -z "${NO_RESTART:-}" ]; then
 fi
 if [ -z "${NO_AUDIT:-}" ]; then
   echo; echo "Проверка:"
-  bash "$FRESH_SKILLS/update-protections/audit.sh" "$AGENTS_ROOT" /home
+  audit=$(bash "$FRESH_SKILLS/update-protections/audit.sh" "$AGENTS_ROOT" /home); echo "$audit"
+  if echo "$audit" | grep -q 'нет резервной копии'; then
+    echo
+    echo "Резервная копия ставится отдельно — по уроку «Очень важно❗️ Резервная копия команды» (нужно ваше закрытое хранилище на GitHub)."
+  fi
 fi
