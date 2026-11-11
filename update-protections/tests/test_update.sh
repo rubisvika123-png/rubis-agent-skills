@@ -13,6 +13,8 @@ cp -r "$STARTER" "$A"; rm -rf "$A/.git" "$P/.claude" "$A/scripts/require-telegra
 # a real old starter version of one bridge file (from the starter history)
 cp "$H/tests/old-status-manager.ts" "$P/src/status/status-manager.ts"
 cp "$H/tests/old-watchdog.sh" "$A/scripts/agent-watchdog.sh"
+# starters before 05.10.2026 ran the agent on Sonnet
+sed -i 's/--model claude-opus-5/--model claude-sonnet-4-6/' "$A/start.sh"
 printf '[Service]\nExecStart=/bin/bash %s\nRestart=always\n' "$A/scripts/agent-watchdog.sh" > "$T/units/agent-watchdog.service"
 
 run() { AGENTS_ROOT="$T/root" SKILLS_DIR="$SKILLS" STARTER_DIR="$STARTER" UNIT_DIR="$T/units" \
@@ -25,6 +27,8 @@ check "reply guard script" 1 "$(ls "$A/scripts/require-telegram-reply.js" | wc -
 check "limit-warn mod" 1 "$(grep -c 'mods/limit-warn' "$A/start.sh")"
 check "unstick mod" 1 "$(grep -c 'mods/unstick' "$A/start.sh")"
 check "restart keeps conversation" 1 "$(grep -c 'continue-once' "$A/start.sh")"
+check "model switched to Opus" 1 "$(grep -c -- '--model claude-opus-5' "$A/start.sh")"
+check "no Sonnet left" 0 "$(grep -c sonnet "$A/start.sh")"
 check "start.sh still valid" 0 "$(bash -n "$A/start.sh"; echo $?)"
 WD="$A/scripts/agent-watchdog.sh"
 for fn in check_login check_login_soon unblock_dialog creds_expired; do

@@ -136,10 +136,13 @@ if "continue-once" not in s:
         '# One-shot: a restart for an update keeps the conversation.\nCONT=()\n'
         'if [ -f "$PLUGIN_DIR/state/continue-once" ]; then rm -f "$PLUGIN_DIR/state/continue-once"; CONT=(--continue); fi\n'
         'exec env IS_SANDBOX=1 claude "${CONT[@]}" ', 1)
+# Starters cloned before 05.10.2026 launched the agent on Sonnet; the course says Opus (Vika 11.11).
+s = re.sub(r'--model\s+claude-sonnet[\w.\-]*', '--model claude-opus-5', s)
 if s != orig:
     shutil.copy2(p, p + ".bak-" + stamp)
     open(p, "w").write(s)
 PY
+  grep -q -- "--model claude-opus-5" "$d/start.sh" && say "$name: модель — Claude Opus 5"
   bash -n "$d/start.sh" && say "$name: моды limit-warn и unstick подключены" || warn "$name: start.sh сломался — верните $d/start.sh.bak-$STAMP"
 done
 
