@@ -52,8 +52,11 @@ for m in limit-warn unstick; do
 done
 
 if [ -n "${STARTER_DIR:-}" ]; then STARTER="$STARTER_DIR"
-else STARTER=$(mktemp -d); git clone -q --depth 1 "$STARTER_URL" "$STARTER"; fi
+else STARTER=$(mktemp -d); git clone -q "$STARTER_URL" "$STARTER"; fi
 NEW_SRC="$STARTER/dashi-plugin-claude-code/plugin"
+# Every version of every bridge file the starter ever shipped: a file matching one of
+# them is just an old copy; anything else is the owner's own change and is never overwritten.
+KNOWN=$(git -C "$STARTER" log --format= --raw --no-abbrev -- dashi-plugin-claude-code/plugin/src 2>/dev/null | awk '{print $3; print $4}' | sort -u)
 
 # ---- agents ---------------------------------------------------------------------------------
 AGENT_DIRS=()
@@ -74,8 +77,11 @@ for d in "${AGENT_DIRS[@]}"; do
   # ---- 2. bridge --------------------------------------------------------------------------
   if diff -rq "$p/src" "$NEW_SRC/src" -x '*.bak*' >/dev/null 2>&1; then
     say "$name: мост уже новый"
-  elif [ -d "$d/.git" ] && ! git -C "$d" diff --quiet HEAD -- dashi-plugin-claude-code/plugin/src 2>/dev/null; then
-    warn "$name: мост изменён вручную — обновление моста пропущено, его сделает ваш техспец"
+  elif custom=$(cd "$p/src" && find . -type f ! -name '*.bak*' | while read -r f; do
+           cmp -s "$f" "$NEW_SRC/src/$f" && continue
+           grep -qx "$(git hash-object "$f")" <<<"$KNOWN" || echo "${f#./}"
+         done) && [ -n "$custom" ]; then
+    warn "$name: в мосте есть свои доработки ($(echo $custom | tr ' ' ',')) — обновление моста пропущено, его сделает ваш техспец"
   else
     cp -a "$p/src" "$p/src.bak-$STAMP"
     cp -a "$NEW_SRC/src/." "$p/src/"

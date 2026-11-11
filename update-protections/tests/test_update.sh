@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # update.sh on a synthetic student server: old bridge, old watchdog, plain start.sh.
-#   test_update.sh <path to a checkout of the ai-victoriarubis starter>
+#   test_update.sh <path to a FULL clone (with history) of the ai-victoriarubis starter>
 set -u
 H=$(cd "$(dirname "$0")/.." && pwd); SKILLS=$(cd "$H/.." && pwd); STARTER="$1"
 T=$(mktemp -d)
@@ -10,7 +10,8 @@ check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "
 A="$T/root/ai-victoriarubis"; P="$A/dashi-plugin-claude-code/plugin"
 mkdir -p "$T/root" "$T/units"
 cp -r "$STARTER" "$A"; rm -rf "$A/.git" "$P/.claude" "$A/scripts/require-telegram-reply.js"
-echo "// old bridge" > "$P/src/status/status-manager.ts"
+# a real old starter version of one bridge file (from the starter history)
+cp "$H/tests/old-status-manager.ts" "$P/src/status/status-manager.ts"
 cp "$H/tests/old-watchdog.sh" "$A/scripts/agent-watchdog.sh"
 printf '[Service]\nExecStart=/bin/bash %s\nRestart=always\n' "$A/scripts/agent-watchdog.sh" > "$T/units/agent-watchdog.service"
 
@@ -43,12 +44,11 @@ check "second run is a no-op" "$before" "$after"
 
 # a bridge the student changed (tracked in git) is left alone
 B="$T/root2/agent"; mkdir -p "$T/root2"; cp -r "$STARTER" "$B"; rm -rf "$B/.git"
-(cd "$B" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm init)
 echo "// my change" >> "$B/dashi-plugin-claude-code/plugin/src/server.ts"
-echo "// old bridge" > "$B/dashi-plugin-claude-code/plugin/src/status/status-manager.ts"
+cp "$H/tests/old-status-manager.ts" "$B/dashi-plugin-claude-code/plugin/src/status/status-manager.ts"
 out=$(AGENTS_ROOT="$T/root2" SKILLS_DIR="$SKILLS" STARTER_DIR="$STARTER" UNIT_DIR="$T/none" \
       NO_FETCH=1 NO_APT=1 NO_RESTART=1 NO_AUDIT=1 bash "$H/update.sh" 2>&1)
 check "changed bridge untouched" 1 "$(grep -c '// my change' "$B/dashi-plugin-claude-code/plugin/src/server.ts")"
-check "changed bridge reported" 1 "$(echo "$out" | grep -c 'мост изменён вручную')"
+check "changed bridge reported" 1 "$(echo "$out" | grep -c 'свои доработки (server.ts)')"
 
 [ $fail -eq 0 ] && echo "ALL PASS ($pass)" || { echo "FAILED $fail"; exit 1; }
