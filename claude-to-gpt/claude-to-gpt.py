@@ -384,6 +384,16 @@ def apply(p, profile, home):
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
     install_recipes_skill(pdir, p["agent_dir"], p["memory_dirs"])
+    # 11.11: new Hermes ignores session_reset unless this plugin is on (nightly/idle resets keep
+    # the conversation small — without them it grows and slows down).
+    if hermes_source_has(home, "is no longer applied"):
+        name = "hermes-session-reset-policy"
+        if not os.path.isdir(os.path.join(pdir, "plugins", name)):
+            subprocess.run(["hermes", "-p", profile, "plugins", "install", name], capture_output=True, text=True)
+        subprocess.run(["hermes", "-p", profile, "plugins", "enable", name], capture_output=True, text=True)
+        enabled = (yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}).get("plugins", {}).get("enabled") or []
+        if name not in enabled:
+            print(f"  ВНИМАНИЕ: не поставился плагин {name} — разговор не будет обновляться сам ночью")
 
 
 RECIPES_SKILL = """---
@@ -497,14 +507,39 @@ def install_plugin(pdir, name):
         return False
 
 
+def hermes_source_has(home, text):
+    """Feature probe of the installed Hermes, read from its source (never by running the gateway).
+    11.11.2026: v0.23 serves every profile from ONE host gateway (`--profile X gateway install`
+    refuses) and dropped built-in session resets (now a plugin)."""
+    roots = [os.environ.get("C2G_HERMES_SRC", ""), os.path.join(home, ".hermes/hermes-agent"), "/usr/local/lib/hermes-agent"]
+    for r in filter(None, roots):
+        for f in glob.glob(os.path.join(r, "hermes_cli", "*.py")) + glob.glob(os.path.join(r, "gateway", "*.py")):
+            try:
+                if text in open(f, encoding="utf-8", errors="ignore").read():
+                    return True
+            except OSError:
+                pass
+    return False
+
+
+def host_gateway(home):
+    return hermes_source_has(home, "does not get a gateway of its own")
+
+
 def handover_to_watchdog(agent_dir, profile, home, who):
     """Hand the agent over to the server's agent watchdog (Vika 10.11.2026): its Claude entry
     leaves AGENTS, its Hermes service joins HERMES (check_hermes revives it and tells the owner;
     check_hermes_limit reports a spent ChatGPT limit). Only once the gateway service exists —
     before that the watchdog would alert about a service that is simply not installed yet."""
+    units = os.path.join(home, ".config/systemd/user")
     unit = f"hermes-gateway-{profile}.service"
-    if not os.path.isfile(os.path.join(home, ".config/systemd/user", unit)):
-        return "pending"
+    if not os.path.isfile(os.path.join(units, unit)):
+        # new Hermes: one host gateway serves every profile; the watchdog checks each profile's
+        # ChatGPT limit through that one entry (check_hermes_limit scans the profiles)
+        if host_gateway(home) and os.path.isfile(os.path.join(units, "hermes-gateway.service")):
+            unit = "hermes-gateway.service"
+        else:
+            return "pending"
     unit_dir = os.environ.get("C2G_UNIT_DIR", "/etc/systemd/system")
     done = []
     for uf in sorted(glob.glob(os.path.join(unit_dir, "agent-watchdog*.service"))):
@@ -584,10 +619,15 @@ def main():
         print("Сторож: агента передам ему после шага 3 — запусти эту же команду с --apply ещё раз, это безопасно.")
     elif wd:
         print(f"Сторож: агент на GPT теперь под его присмотром, агент на Claude из этой папки из сторожа убран ({', '.join(wd)}).")
+    if host_gateway(a.home):
+        step3 = ("hermes gateway install   # один общий запуск на все агенты на GPT; ответило «Use --force to reinstall» — "
+                 "он уже стоит, тогда: hermes gateway restart")
+    else:
+        step3 = f"hermes --profile {a.profile} gateway install && hermes --profile {a.profile} gateway start"
     print(f"""Профиль записан. Переключение (по одному, бот один и тот же):
   1. hermes --profile {a.profile} auth add openai-codex --type oauth --no-browser   # вход в ChatGPT клиента
   2. остановить агента Claude этой папки (и убрать его из сторожа), иначе два движка дерутся за бота
-  3. hermes --profile {a.profile} gateway install && hermes --profile {a.profile} gateway start
+  3. {step3}
   4. написать боту и убедиться, что ответил GPT
   5. один раз написать агенту: «Собери RECIPES.md по навыку task-recipes» — он распишет рецепт под каждую свою задачу
      (долго, до 20 минут, и ощутимо тратит лимит ChatGPT — делать по одному агенту)""")

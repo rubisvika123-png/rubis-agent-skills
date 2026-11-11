@@ -31,5 +31,17 @@ for WD in "$@"; do
   [ ${#NOTIFIED[@]} -eq 3 ] || fail "reset time in milliseconds not understood"
   echo 'broken' >"$WORK/auth.json"; HLIMIT_NOTIFIED=(); check_hermes_limit u "$WORK" Лиза
   [ ${#NOTIFIED[@]} -eq 3 ] || fail "alert on an unreadable auth.json"
+  # Host gateway (new Hermes): one HERMES entry, every profile without its own unit is checked too.
+  H="$WORK/home/.hermes"; mkdir -p "$H/profiles/a" "$H/profiles/b" "$WORK/home/.config/systemd/user"
+  printf '{"credential_pool":{"openai-codex":[{"last_status":"ok"}]}}' >"$H/auth.json"
+  for x in a b; do printf '{"credential_pool":{"openai-codex":[{"last_status":"exhausted","last_error_reset_at":%s}]}}' "$later" >"$H/profiles/$x/auth.json"; done
+  touch "$WORK/home/.config/systemd/user/hermes-gateway-b.service"   # b runs its own (old-style) gateway
+  NOTIFIED=(); HLIMIT_NOTIFIED=(); check_hermes_limit hermes-gateway.service "$H" Техспец
+  [ ${#NOTIFIED[@]} -eq 1 ] || fail "host gateway: want 1 alert (profile a), got ${#NOTIFIED[@]}"
+  [ "${NOTIFIED[0]%%|*}" = "$H/profiles/a/.env" ] || fail "host gateway: alert not from profile a's bot: ${NOTIFIED[0]}"
+  check_hermes_limit hermes-gateway.service "$H" Техспец
+  [ ${#NOTIFIED[@]} -eq 1 ] || fail "host gateway: repeated alert"
+  NOTIFIED=(); HLIMIT_NOTIFIED=(); check_hermes_limit hermes-gateway-x.service "$H/profiles/a" a
+  [ ${#NOTIFIED[@]} -eq 1 ] || fail "per-profile unit must check only its own profile"
   echo "PASS $WD"
 done
