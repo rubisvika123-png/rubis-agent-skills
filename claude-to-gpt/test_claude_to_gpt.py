@@ -67,8 +67,50 @@ def check_effort():
     assert m.effort_for("/root/assistant", "tutor") == "medium"
 
 
+def check_host_gateway():
+    """11.11: new Hermes — one host gateway for all profiles, session resets via a plugin."""
+    with tempfile.TemporaryDirectory() as root:
+        home, agent, bindir = make_agent(root)
+        pdir = os.path.join(home, ".hermes/profiles/testgpt")
+        src = os.path.join(root, "hsrc"); os.makedirs(os.path.join(src, "hermes_cli")); os.makedirs(os.path.join(src, "gateway"))
+        open(os.path.join(src, "hermes_cli/gateway.py"), "w").write("print('Profile X does not get a gateway of its own.')\n")
+        open(os.path.join(src, "gateway/run.py"), "w").write("w('session_reset.mode: both is no longer applied')\n")
+        # stub: `hermes -p P plugins enable N` adds N to the profile's plugins.enabled
+        open(os.path.join(bindir, "hermes"), "w").write(
+            '#!/bin/sh\nif [ "$3" = plugins ]; then\n'
+            '  [ "$4" = install ] && mkdir -p "$HOME/.hermes/profiles/$2/plugins/$5"\n'
+            '  [ "$4" = enable ] && python3 -c "import yaml,sys; p=sys.argv[1]; c=yaml.safe_load(open(p)); '
+            'c.setdefault(\'plugins\',{}).setdefault(\'enabled\',[]).append(sys.argv[2]); yaml.safe_dump(c,open(p,\'w\'))" '
+            '"$HOME/.hermes/profiles/$2/config.yaml" "$5"\n  exit 0\nfi\nmkdir -p "$HOME/.hermes/profiles/$3"\n')
+        units = os.path.join(root, "units"); os.makedirs(units)
+        wd = os.path.join(root, "agent-watchdog.sh")
+        open(wd, "w").write('declare -A AGENTS=(\n  [agent]="%s"\n)\ndeclare -A HERMES=()\ndeclare -A HERMES_WHO=()\n' % agent)
+        open(os.path.join(units, "agent-watchdog.service"), "w").write("[Service]\nExecStart=/bin/bash %s\n" % wd)
+        os.environ.update(C2G_HERMES_SRC=src, C2G_UNIT_DIR=units, C2G_NO_SYSTEMCTL="1")
+        try:
+            r = run(home, agent, bindir, "--apply")
+            assert r.returncode == 0, r.stderr
+            assert "hermes gateway install   # один общий запуск" in r.stdout, r.stdout
+            assert "--profile testgpt gateway install" not in r.stdout
+            cfg = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
+            assert "hermes-session-reset-policy" in cfg["plugins"]["enabled"], cfg["plugins"]
+            assert "не поставился" not in r.stdout
+            assert "запусти эту же команду" in r.stdout, "no host gateway yet → pending"
+            os.makedirs(os.path.join(home, ".config/systemd/user"))
+            open(os.path.join(home, ".config/systemd/user/hermes-gateway.service"), "w").write("[Service]\n")
+            r = run(home, agent, bindir, "--apply")
+            w = open(wd).read()
+            assert '# [agent]="%s"' % agent in w, w
+            assert '[hermes-gateway.service]="%s"' % pdir in w, w
+            assert subprocess.run(["bash", "-n", wd]).returncode == 0
+        finally:
+            for k in ("C2G_HERMES_SRC", "C2G_UNIT_DIR", "C2G_NO_SYSTEMCTL"):
+                os.environ.pop(k, None)
+
+
 def main():
     check_effort()
+    check_host_gateway()
     with tempfile.TemporaryDirectory() as root:
         home, agent, bindir = make_agent(root)
         pdir = os.path.join(home, ".hermes/profiles/testgpt")

@@ -150,7 +150,7 @@ for unit in $WD_UNITS; do
   wd=$(grep -m1 '^ExecStart=' "$unit" | grep -oE '/[^ "]*watchdog[^ "]*\.sh' | head -1)
   [ -f "$wd" ] || { warn "сторож $unit: скрипт $wd не найден"; continue; }
   if grep -q '^check_login_soon()' "$wd" && grep -q '^unblock_dialog()' "$wd" && grep -q '^check_login()' "$wd" \
-     && grep -q '^check_hermes_limit()' "$wd"; then
+     && grep -q '^check_hermes_limit()' "$wd" && grep -q '^_hermes_limit_one()' "$wd"; then
     say "сторож $(basename "$unit"): проверки уже есть"
   else
     cp -p "$wd" "$wd.bak-$STAMP"; WD_CHANGED=1
@@ -160,6 +160,10 @@ p, chk = sys.argv[1], sys.argv[2]
 s = open(p).read(); block = open(chk).read()
 if "main() {" not in s or 'check_limit "$name"' not in s:
     print("старый сторож без check_limit"); sys.exit(1)
+# an older check_hermes_limit (before the host gateway of new Hermes) is replaced, not kept
+if re.search(r"^check_hermes_limit\(\)", s, re.M) and "_hermes_limit_one" not in s:
+    i = s.index("# check_hermes_limit UNIT DIR WHO"); j = s.index("\n}\n", s.index("check_hermes_limit() {", i)) + 3
+    s = s[:i] + s[j:]
 # drop functions this watchdog already has, keep the rest of the block
 for fn in ("creds_expired", "check_login", "check_login_soon", "unblock_dialog", "check_hermes_limit"):
     if re.search(r"^%s\(\) \{" % fn, s, re.M):
