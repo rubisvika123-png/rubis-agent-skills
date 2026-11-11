@@ -169,6 +169,31 @@ def main():
         assert open(first).read() == "ORIGINAL BEFORE GPT", "first backup overwritten on re-run"
         assert glob.glob(os.path.join(pdir, "SOUL.md.bak-rerun-*")), "previous GPT SOUL not backed up"
 
+        # 10.11: hand the agent over to the watchdog — only once its gateway service exists.
+        units = os.path.join(root, "units"); os.makedirs(units)
+        wd = os.path.join(root, "agent-watchdog.sh")
+        open(wd, "w").write('#!/usr/bin/env bash\ndeclare -A AGENTS=(\n  [agent]="%s"\n  [agent-other]="/root/other"\n)\n'
+                            'declare -A HERMES=()\ndeclare -A HERMES_WHO=()\n' % agent)
+        open(os.path.join(units, "agent-watchdog.service"), "w").write("[Service]\nExecStart=/bin/bash %s\n" % wd)
+        os.environ.update(C2G_UNIT_DIR=units, C2G_NO_SYSTEMCTL="1")
+        before = open(wd).read()
+        r = run(home, agent, bindir, "--apply")
+        assert r.returncode == 0, r.stderr
+        assert open(wd).read() == before, "watchdog touched before the gateway service exists"
+        assert "запусти эту же команду с --apply ещё раз" in r.stdout, r.stdout
+        os.makedirs(os.path.join(home, ".config/systemd/user"))
+        open(os.path.join(home, ".config/systemd/user/hermes-gateway-testgpt.service"), "w").write("[Service]\n")
+        r = run(home, agent, bindir, "--apply")
+        assert r.returncode == 0, r.stderr
+        w = open(wd).read()
+        assert '# [agent]="%s"' % agent in w and '  [agent-other]="/root/other"' in w, w
+        assert '[hermes-gateway-testgpt.service]="%s"' % pdir in w and '[hermes-gateway-testgpt.service]="testgpt"' in w, w
+        assert subprocess.run(["bash", "-n", wd]).returncode == 0
+        assert "под его присмотром" in r.stdout, r.stdout
+        r = run(home, agent, bindir, "--apply")
+        assert open(wd).read() == w, "second handover changed the watchdog again"
+        del os.environ["C2G_UNIT_DIR"], os.environ["C2G_NO_SYSTEMCTL"]
+
         # No token → refuse.
         open(os.path.join(agent, "secrets/channel.env"), "w").write("")
         r = run(home, agent, bindir)
