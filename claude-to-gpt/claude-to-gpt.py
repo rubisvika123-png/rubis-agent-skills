@@ -15,7 +15,7 @@ switch-over is a separate, deliberate step printed at the end.
 
 Usage: claude-to-gpt.py AGENT_DIR PROFILE [--apply]
 """
-import argparse, urllib.request, glob, json, os, re, subprocess, sys, time
+import argparse, urllib.request, glob, json, os, re, shutil, subprocess, sys, time
 
 import yaml
 
@@ -497,6 +497,60 @@ def install_plugin(pdir, name):
         return False
 
 
+def handover_to_watchdog(agent_dir, profile, home, who):
+    """Hand the agent over to the server's agent watchdog (Vika 10.11.2026): its Claude entry
+    leaves AGENTS, its Hermes service joins HERMES (check_hermes revives it and tells the owner;
+    check_hermes_limit reports a spent ChatGPT limit). Only once the gateway service exists —
+    before that the watchdog would alert about a service that is simply not installed yet."""
+    unit = f"hermes-gateway-{profile}.service"
+    if not os.path.isfile(os.path.join(home, ".config/systemd/user", unit)):
+        return "pending"
+    unit_dir = os.environ.get("C2G_UNIT_DIR", "/etc/systemd/system")
+    done = []
+    for uf in sorted(glob.glob(os.path.join(unit_dir, "agent-watchdog*.service"))):
+        m = re.search(r"^ExecStart=.*?(/\S*watchdog\S*\.sh)", open(uf, encoding="utf-8").read(), re.M)
+        if not m or not os.path.isfile(m.group(1)):
+            continue
+        wd = m.group(1)
+        s = open(wd, encoding="utf-8").read()
+        new = s
+        agent = os.path.realpath(agent_dir)
+
+        def drop(mm):  # comment out this agent's Claude entry in AGENTS
+            ind, name, path = mm.group(1), mm.group(2), mm.group(3)
+            if os.path.realpath(path) != agent:
+                return mm.group(0)
+            return f'{ind}# [{name}]="{path}"  # на GPT: {unit}'
+        new = re.sub(r'^(\s*)\[([^\]]+)\]="([^"]+)"', drop, new, flags=re.M)
+        if f"[{unit}]" not in new:
+            pdir = os.path.join(home, ".hermes/profiles", profile)
+            for arr, val in (("HERMES", pdir), ("HERMES_WHO", who)):
+                line = f'  [{unit}]="{val}"\n'
+                if re.search(rf"^declare -A {arr}=\(\)", new, re.M):
+                    new = re.sub(rf"^declare -A {arr}=\(\)", f"declare -A {arr}=(\n{line})", new, count=1, flags=re.M)
+                elif re.search(rf"^declare -A {arr}=\(\n", new, re.M):
+                    new = re.sub(rf"^(declare -A {arr}=\(\n)", rf"\g<1>{line}", new, count=1, flags=re.M)
+        if new == s:
+            done.append(wd); continue
+        shutil.copy2(wd, wd + ".bak-claude-to-gpt")
+        with open(wd, "w", encoding="utf-8") as f:
+            f.write(new)
+        if subprocess.run(["bash", "-n", wd]).returncode != 0:
+            shutil.copy2(wd + ".bak-claude-to-gpt", wd)
+            print(f"  ВНИМАНИЕ: сторож {wd} не удалось поправить — вернул как было")
+            continue
+        if not os.environ.get("C2G_NO_SYSTEMCTL"):
+            dropin = uf + ".d/killmode.conf"
+            if "KillMode=process" not in open(uf, encoding="utf-8").read() and not os.path.exists(dropin):
+                os.makedirs(uf + ".d", exist_ok=True)
+                with open(dropin, "w") as f:
+                    f.write("[Service]\n# Перезапуск сторожа не должен выключать агентов\nKillMode=process\n")
+                subprocess.run(["systemctl", "daemon-reload"])
+            subprocess.run(["systemctl", "restart", os.path.basename(uf)])
+        done.append(wd)
+    return done
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("agent_dir")
@@ -525,6 +579,11 @@ def main():
         print("Пробный прогон: ничего не записано. Запуск с --apply запишет профиль.")
         return
     apply(p, a.profile, a.home)
+    wd = handover_to_watchdog(a.agent_dir, a.profile, a.home, a.profile)
+    if wd == "pending":
+        print("Сторож: агента передам ему после шага 3 — запусти эту же команду с --apply ещё раз, это безопасно.")
+    elif wd:
+        print(f"Сторож: агент на GPT теперь под его присмотром, агент на Claude из этой папки из сторожа убран ({', '.join(wd)}).")
     print(f"""Профиль записан. Переключение (по одному, бот один и тот же):
   1. hermes --profile {a.profile} auth add openai-codex --type oauth --no-browser   # вход в ChatGPT клиента
   2. остановить агента Claude этой папки (и убрать его из сторожа), иначе два движка дерутся за бота
