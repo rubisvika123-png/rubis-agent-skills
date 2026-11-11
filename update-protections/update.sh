@@ -62,6 +62,11 @@ for st in "$AGENTS_ROOT"/*/start.sh "$AGENTS_ROOT"/*/*/start.sh; do
 done
 [ ${#AGENT_DIRS[@]} -gt 0 ] || { echo "ОШИБКА: агентов в $AGENTS_ROOT не нашла"; exit 1; }
 say "агенты: ${AGENT_DIRS[*]}"
+# fingerprint of what this command may change — restart only what really changed
+fp() { find "$1" -path "*/node_modules" -prune -o -path "*.bak*" -prune -o -path "*/state" -prune -o -type f \( -path "*/src/*" -o -name settings.json -o -name start.sh -o -name require-telegram-reply.js -o -name package.json \) -print0 2>/dev/null | sort -z | xargs -0 md5sum 2>/dev/null | md5sum; }
+declare -A BEFORE=()
+for d in "${AGENT_DIRS[@]}"; do BEFORE[$d]=$(fp "$d"); done
+WD_CHANGED=""
 
 for d in "${AGENT_DIRS[@]}"; do
   p="$d/dashi-plugin-claude-code/plugin"; name=$(basename "$d")
@@ -141,7 +146,7 @@ for unit in $WD_UNITS; do
   if grep -q '^check_login_soon()' "$wd" && grep -q '^unblock_dialog()' "$wd" && grep -q '^check_login()' "$wd"; then
     say "сторож $(basename "$unit"): проверки уже есть"
   else
-    cp -p "$wd" "$wd.bak-$STAMP"
+    cp -p "$wd" "$wd.bak-$STAMP"; WD_CHANGED=1
     if python3 - "$wd" "$CHECKS" <<'PY'
 import re, sys
 p, chk = sys.argv[1], sys.argv[2]
@@ -178,10 +183,10 @@ PY
   dropin="$unit.d/killmode.conf"
   if ! grep -qs '^KillMode=process' "$unit" "$dropin"; then
     mkdir -p "$unit.d"
-    printf '[Service]\n# Перезапуск сторожа не должен выключать агентов\nKillMode=process\n' >"$dropin"
+    printf '[Service]\n# Перезапуск сторожа не должен выключать агентов\nKillMode=process\n' >"$dropin"; WD_CHANGED=1
   fi
 done
-if [ -n "$WD_UNITS" ] && [ -z "${NO_RESTART:-}" ]; then
+if [ -n "$WD_CHANGED" ] && [ -z "${NO_RESTART:-}" ]; then
   systemctl daemon-reload
   for unit in $WD_UNITS; do systemctl restart "$(basename "$unit")"; done
   say "сторож перезапущен"
@@ -202,6 +207,7 @@ fi
 if [ -z "${NO_RESTART:-}" ]; then
   for d in "${AGENT_DIRS[@]}"; do
     p="$d/dashi-plugin-claude-code/plugin"
+    [ "$(fp "$d")" = "${BEFORE[$d]}" ] && { say "$(basename "$d"): всё уже было на месте, перезапуск не нужен"; continue; }
     sess=$(for s in $(tmux ls -F '#{session_name}' 2>/dev/null); do
              cwd=$(tmux display -p -t "$s" '#{pane_current_path}' 2>/dev/null)
              case "$cwd" in "$d"|"$d"/*) echo "$s";; esac; done | head -1)
