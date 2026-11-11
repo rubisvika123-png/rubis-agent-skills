@@ -35,6 +35,9 @@ check "loop calls check_login_soon" 1 "$(grep -c '^    check_login_soon$' "$WD")
 check "KillMode=process" 1 "$(grep -c '^KillMode=process' "$T/units/agent-watchdog.service.d/killmode.conf")"
 check "login-soon behaves" 0 "$(bash "$H/tests/test_login_soon.sh" "$WD" >/dev/null; echo $?)"
 check "login/dialog behave" 0 "$(bash "$H/tests/test_login_dialog.sh" "$WD" >/dev/null; echo $?)"
+check "watchdog has check_hermes_limit" 1 "$(grep -c '^check_hermes_limit()' "$WD")"
+check "hermes loop calls the limit check" 1 "$(grep -c '^      check_hermes_limit "\$unit"' "$WD")"
+check "ChatGPT limit behaves" 0 "$(bash "$H/tests/test_hermes_limit.sh" "$WD" >/dev/null; echo $?)"
 check "no Vika-only wording for students" 0 "$(grep -c 'напишите Виктории' "$WD")"
 
 # second run changes nothing

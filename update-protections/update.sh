@@ -149,7 +149,8 @@ WD_UNITS=$(ls "$UNIT_DIR"/agent-watchdog*.service 2>/dev/null)
 for unit in $WD_UNITS; do
   wd=$(grep -m1 '^ExecStart=' "$unit" | grep -oE '/[^ "]*watchdog[^ "]*\.sh' | head -1)
   [ -f "$wd" ] || { warn "сторож $unit: скрипт $wd не найден"; continue; }
-  if grep -q '^check_login_soon()' "$wd" && grep -q '^unblock_dialog()' "$wd" && grep -q '^check_login()' "$wd"; then
+  if grep -q '^check_login_soon()' "$wd" && grep -q '^unblock_dialog()' "$wd" && grep -q '^check_login()' "$wd" \
+     && grep -q '^check_hermes_limit()' "$wd"; then
     say "сторож $(basename "$unit"): проверки уже есть"
   else
     cp -p "$wd" "$wd.bak-$STAMP"; WD_CHANGED=1
@@ -160,7 +161,7 @@ s = open(p).read(); block = open(chk).read()
 if "main() {" not in s or 'check_limit "$name"' not in s:
     print("старый сторож без check_limit"); sys.exit(1)
 # drop functions this watchdog already has, keep the rest of the block
-for fn in ("creds_expired", "check_login", "check_login_soon", "unblock_dialog"):
+for fn in ("creds_expired", "check_login", "check_login_soon", "unblock_dialog", "check_hermes_limit"):
     if re.search(r"^%s\(\) \{" % fn, s, re.M):
         block = re.sub(r"^%s\(\) \{.*?^\}\n" % fn, "", block, flags=re.M | re.S)
 s = s.replace("main() {\n", block + "\nmain() {\n", 1)
@@ -173,6 +174,8 @@ for i, ln in enumerate(lines):
         rest = "\n".join(lines[i + 1:i + 8])
         if 'check_login "$name"' not in rest: out.append(ind + 'check_login "$name" "${AGENTS[$name]}"')
         if 'unblock_dialog "$name"' not in rest: out.append(ind + 'unblock_dialog "$name"')
+    if in_main and re.match(r'\s+check_hermes "\$unit"', ln) and 'check_hermes_limit "$unit"' not in "\n".join(lines[i + 1:i + 4]):
+        out.append(re.match(r"(\s+)", ln).group(1) + 'check_hermes_limit "$unit" "${HERMES[$unit]}" "${HERMES_WHO[$unit]}"')
     if in_main and not added_loop and re.match(r"    done\s*$", ln) and any('check_limit "$name"' in x for x in out[-12:]):
         out.append("    check_login_soon"); added_loop = True
 if not added_loop:
