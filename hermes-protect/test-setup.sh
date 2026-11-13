@@ -24,6 +24,7 @@ grep -q "verify-gate.py" "$T/h/profiles/second/config.yaml" || fail "gate not ad
 grep -q "Проверка перед «готово»" "$T/h/SOUL.md" || fail "rule not in SOUL"
 grep -q "Спросить другого агента = передать и ждать" "$T/h/SOUL.md" && grep -q "Заметки — коротко и по местам" "$T/h/SOUL.md" || fail "GPT rules (13.11) not in SOUL"
 [ "$(grep -c "Спросить другого агента = передать и ждать" "$T/h/SOUL.md")" = 1 ] || fail "GPT rules duplicated"
+grep -q "## Длина ответа владельцу" "$T/h/SOUL.md" || fail "length rule not in SOUL"
 [ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
 grep -q "plugins enable media-check" "$T/calls" && grep -q -- "--profile second plugins enable media-check" "$T/calls" || fail "media-check not enabled"
 grep -A3 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold: 0.1$' || fail "profile compression not lowered"

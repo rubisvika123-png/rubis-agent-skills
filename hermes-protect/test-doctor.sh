@@ -18,7 +18,7 @@ echo "$out" | grep -q "ИТОГ: проблем" || fail "no problem summary"
 # fresh setup: gate + rules + compression
 cp "$D/verify-gate.py" "$T/h/hooks/verify-gate.py"
 printf 'model:\n  default: gpt-5.6-sol\ncompression:\n  enabled: true\n  threshold_tokens: 100000\nhooks:\n  pre_verify:\n    - command: %s/h/hooks/verify-gate.py\n' "$T" > "$T/h/profiles/strateg/config.yaml"
-printf '## Проверка перед «готово»\n## Спросить другого агента = передать и ждать\n## Заметки — коротко и по местам\n' > "$T/h/profiles/strateg/SOUL.md"
+printf '## Проверка перед «готово»\n## Спросить другого агента = передать и ждать\n## Заметки — коротко и по местам\n## Длина ответа владельцу\n' > "$T/h/profiles/strateg/SOUL.md"
 out=$(HERMES_DIR="$T/h" bash "$D/doctor.sh")
 echo "$out" | grep -q "ИТОГ: всё в порядке" || { echo "$out"; fail "fresh setup not clean"; }
 echo "doctor: ALL TESTS PASSED"
