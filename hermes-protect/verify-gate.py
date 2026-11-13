@@ -13,7 +13,11 @@ Any error -> print nothing, the turn finishes as usual (never block the agent).
 import json, os, re, sys, time
 
 # own memory/notes, skills, the team board and second-brain notes are bookkeeping, not the delivery (09.11)
-OWN = re.compile(r"/\.hermes/|/memor(y|ies)/|/\.claude/|/skills/|/second-brain/|team-tasks\.md$")
+# 13.11: the course's shared brain is /root/ai-shared-brain (tasks/facts/calendar) and the strategist keeps its
+# numbers in materials/point-a.md — both are notes, not deliveries. Missing them sent a strategist back for a
+# second pass on EVERY turn: two answers in Telegram and double the ChatGPT limit (student, 12–13.11).
+OWN = re.compile(r"/\.hermes/|/memor(y|ies)/|/\.claude/|/skills/|/second-brain/|/ai-shared-brain/|"
+                 r"/materials/point-a\.md$|/knowledge/|team-tasks\.md$")
 QUESTION = re.compile(r"\?\s*$")
 DONE = re.compile(r"готов|сделал|исправил|обновил|загрузил|добавил|поменял|заменил|записал|создал|"
                   r"сохранил|подготовил|написал|собрал|смонтировал|оформил|перенёс|перенес|настроил|"
