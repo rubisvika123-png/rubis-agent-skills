@@ -151,7 +151,7 @@ def main():
         assert "Как я выполняю просьбы" in soul and "## Скорость" in soul
         # 05.11: self-check before «готово» — rule in the character + code gate on the way out
         assert "Проверка перед «готово»" in soul
-        assert "Спросить другого агента = передать и ждать" in soul and "Заметки — коротко и по местам" in soul
+        assert "Спросить другого агента = передать и ждать" in soul and "Заметки — коротко и по местам" in soul and "## Длина ответа владельцу" in soul
         # 07.11: on Дарья's server GPT took ~10 steps per message vs ~3 on Claude; each step resends the whole chat
         assert "## Экономлю шаги" in soul and "не перечитываю" in soul and "одним шагом" in soul
         assert "раздаю помощникам параллельно" not in soul, "delegate_task only for really big tasks"
