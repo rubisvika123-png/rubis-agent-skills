@@ -15,7 +15,7 @@ switch-over is a separate, deliberate step printed at the end.
 
 Usage: claude-to-gpt.py AGENT_DIR PROFILE [--apply]
 """
-import argparse, urllib.request, glob, json, os, re, shutil, subprocess, sys, time
+import argparse, hashlib, urllib.request, glob, json, os, re, shutil, subprocess, sys, time
 
 import yaml
 
@@ -534,7 +534,9 @@ def apply(p, profile, home):
             pl["enabled"] = sorted(set((pl.get("enabled") or []) + [plugin]))
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
-    install_recipes_skill(pdir, p["agent_dir"], p["memory_dirs"])
+    hist = os.path.join(pdir, "skills/recipes/task-recipes/claude-history.md")
+    p["history_tasks"] = export_claude_history(p["agent_dir"], home, hist)
+    install_recipes_skill(pdir, p["agent_dir"], p["memory_dirs"], hist)
     # 11.11: new Hermes ignores session_reset unless this plugin is on (nightly/idle resets keep
     # the conversation small — without them it grows and slows down).
     if hermes_source_has(home, "is no longer applied"):
@@ -545,6 +547,135 @@ def apply(p, profile, home):
         enabled = (yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}).get("plugins", {}).get("enabled") or []
         if name not in enabled:
             print(f"  ВНИМАНИЕ: не поставился плагин {name} — разговор не будет обновляться сам ночью")
+
+
+CHANNEL_MSG = re.compile(r"<channel\b[^>]*>(.*?)</channel>", re.S)
+SECRET = re.compile(r"(?i)((?:token|key|secret|password|passwd|pass|api[_-]?key)[\"']?\s*[=:]\s*)[^\s\"'&]+"
+                    r"|\b\d{8,10}:[A-Za-z0-9_-]{30,}\b|\b(?:sk|gsk|ghp|xai|pk)[-_][A-Za-z0-9_-]{16,}")
+
+
+def _redact(text):
+    return SECRET.sub(lambda m: (m.group(1) or "") + "***", text)
+
+
+def _text_of(content):
+    if isinstance(content, str):
+        return content
+    return "\n".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
+
+
+def export_claude_history(agent_dir, home, out_path, max_tasks=150, max_bytes=250000):
+    """15.11 (Vika): the real work of the Claude agent, as the source for fresh recipes — what the owner
+    asked, which files/commands/skills Claude used, what it answered, and the owner's next word (accepted
+    or corrected). Newest first, secrets redacted. Returns the number of owner messages exported."""
+    enc = re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(agent_dir))
+    files = []
+    for d in glob.glob(os.path.join(home, ".claude/projects", enc + "*")):
+        rest = os.path.basename(d)[len(enc):]
+        if rest in ("", "-dashi-plugin-claude-code-plugin"):
+            files += glob.glob(os.path.join(d, "*.jsonl"))
+    episodes = []
+    for path in files:
+        cur = None
+        for line in open(path, encoding="utf-8", errors="ignore"):
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            msg = d.get("message") or {}
+            if d.get("type") == "user":
+                raw = _text_of(msg.get("content", ""))
+                asks = [re.sub(r"<[^>]+>", "", x).strip() for x in CHANNEL_MSG.findall(raw)]
+                asks = [x for x in asks if x]
+                who = "Владелец"
+                if not asks:  # a scheduled task or a hand-off from another agent, typed into the room
+                    plain = re.sub(r"<system-reminder>.*?</system-reminder>", "", raw, flags=re.S).strip()
+                    helper = ("<", "Caveat", "[Request interrupted", "Below is a conversation log",
+                              "Private connection test", "This session is being continued")
+                    if len(plain) >= 25 and not plain.startswith(helper):
+                        asks, who = [plain], "Задача (расписание или другой агент)"
+                if asks:
+                    cur = {"ts": d.get("timestamp", ""), "who": who, "ask": "\n".join(asks), "did": [], "said": []}
+                    episodes.append(cur)
+            elif d.get("type") == "assistant" and cur is not None:
+                for c in msg.get("content") or []:
+                    if not isinstance(c, dict) or c.get("type") != "tool_use":
+                        continue
+                    name, inp = c.get("name", ""), c.get("input") or {}
+                    if name.endswith("reply") and inp.get("text"):
+                        cur["said"].append(inp["text"])
+                    elif name == "Bash":
+                        cur["did"].append("$ " + str(inp.get("command", ""))[:400])
+                    elif name in ("Read", "Edit", "Write"):
+                        cur["did"].append(f"{name} {inp.get('file_path', '')}")
+                    elif name == "Skill":
+                        cur["did"].append(f"навык {inp.get('skill', '')}")
+                    elif name.startswith("mcp__"):
+                        cur["did"].append("подключение " + name.split("__", 2)[-1])
+    episodes.sort(key=lambda e: e["ts"], reverse=True)
+    # the same scheduled task repeats every day — one (the newest) example is enough;
+    # the owner's own requests go first, then one example of each recurring task
+    seen, owner, other = set(), [], []
+    for e in episodes:
+        key = re.sub(r"\s+", " ", e["ask"])[:120]
+        if e["who"] != "Владелец":
+            if key in seen:
+                continue
+            seen.add(key)
+        (owner if e["who"] == "Владелец" else other).append(e)
+    episodes = sorted(owner[:max_tasks] + other[:max(30, max_tasks - len(owner))], key=lambda e: e["ts"], reverse=True)
+    out, size = ["# Реальная работа агента на Claude (новые сверху)\n",
+                 "Каждая запись: что попросил владелец → что агент сделал (файлы, команды) → что ответил. "
+                 "Следующая (более новая) запись выше — реакция владельца: приняла или поправила.\n"], 0
+    count = 0
+    for e in episodes[:max_tasks]:
+        block = [f"\n## {e['ts'][:16].replace('T', ' ')}", f"{e['who']}: " + re.sub(r"(?m)^#+ ", "", e["ask"][:1200])]
+        did = [x.split("\n")[0][:200] for x in dict.fromkeys(e["did"]) if x.strip()]
+        if did:
+            block.append("Сделал:\n" + "\n".join("- " + x for x in did[:10]) + (f"\n- …и ещё {len(did) - 10}" if len(did) > 10 else ""))
+        if e["said"]:
+            block.append("Ответил:\n" + e["said"][-1][:1500])
+        text = _redact("\n".join(block)) + "\n"
+        if size + len(text.encode("utf-8")) > max_bytes:
+            break
+        out.append(text); size += len(text.encode("utf-8")); count += 1
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out))
+    return count
+
+
+def recipes_ok(pdir):
+    """Number of complete recipes (a heading with «Шаги:») in the profile's RECIPES.md; 0 = not built."""
+    for p in glob.glob(os.path.join(pdir, "skills/recipes/task-recipes/**/RECIPES.md"), recursive=True):
+        text = open(p, encoding="utf-8", errors="ignore").read()
+        parts = re.split(r"^## ", text, flags=re.M)[1:]
+        return sum(1 for x in parts if "Шаги:" in x)
+    return 0
+
+
+BUILD_RECIPES = ("Собери RECIPES.md по навыку task-recipes заново: главный источник — claude-history.md рядом с навыком "
+                 "(реальная работа этого агента на Claude). Ничего владельцу не отправляй и ничего не публикуй. "
+                 "В конце одной строкой: сколько рецептов собрано.")
+
+
+def build_recipes(profile, pdir, run=subprocess.run):
+    """15.11 (Vika): fresh recipes are part of the move, not a manual step after it. Rebuilt whenever the
+    Claude history changed since the last build; the previous RECIPES.md is kept as a backup."""
+    d = os.path.join(pdir, "skills/recipes/task-recipes")
+    hist = os.path.join(d, "claude-history.md")
+    digest = hashlib.sha256(open(hist, "rb").read()).hexdigest() if os.path.isfile(hist) else ""
+    mark = os.path.join(d, ".history-sha256")
+    if digest and os.path.isfile(mark) and open(mark).read().strip() == digest and recipes_ok(pdir) >= 3:
+        return recipes_ok(pdir), False
+    for old in glob.glob(os.path.join(d, "**/RECIPES.md"), recursive=True):
+        os.replace(old, old + time.strftime(".bak-%Y%m%d-%H%M%S"))
+    run(["hermes", "-p", profile, "-z", BUILD_RECIPES], capture_output=True, text=True, timeout=3000)
+    n = recipes_ok(pdir)
+    if n >= 3 and digest:
+        with open(mark, "w") as f:
+            f.write(digest + "\n")
+    return n, True
 
 
 RECIPES_SKILL = """---
@@ -560,10 +691,15 @@ description: Рецепты всех типовых задач этого аге
 Открой RECIPES.md, найди рецепт по словам владельца и иди по нему по шагам. Рецепта нет — сделай задачу,
 а потом допиши рецепт по шаблону ниже.
 
-## Если RECIPES.md ещё нет — собери его один раз
-Источники (только читать): {sources}
-1. Найди в источниках все типовые задачи (то, что владелец поручает регулярно). Читай все файлы памяти, не только оглавление.
-2. Для каждой задачи напиши рецепт строго по шаблону:
+## Если RECIPES.md ещё нет — собери его (переносчик запускает это сам при переносе)
+ГЛАВНЫЙ источник — {history}: реальная работа этого агента на Claude. Что владелец просил, какие файлы,
+скрипты и команды агент использовал, что ответил и что владелец сказал следом (принял или поправил).
+Остальные источники (только читать): {sources}
+1. Пройди историю целиком и сгруппируй похожие просьбы в типовые задачи (всё, что владелец просил 2+ раза,
+   и всё, где есть свой скрипт или файл). Читай все файлы памяти, не только оглавление.
+2. Для каждой задачи напиши рецепт строго по шаблону. Шаги — те же команды, скрипты и пути, что в истории
+   (новых не выдумывать). «Пример хорошего результата» — дословно ответ, который владелец принял.
+   «Частые ошибки» — то, что владелец поправлял (ответ → его следующее сообщение с правкой).
 
 ## <Название задачи>
 Когда применять: какими словами владелец обычно ставит эту задачу.
@@ -579,13 +715,15 @@ description: Рецепты всех типовых задач этого аге
 """
 
 
-def install_recipes_skill(pdir, agent_dir, memory_dirs):
-    """09.11: GPT is critically literal (Сухов); per-task recipes fixed form on the comparison test."""
+def install_recipes_skill(pdir, agent_dir, memory_dirs, history=None):
+    """09.11: GPT is critically literal (Сухов); per-task recipes fixed form on the comparison test.
+    15.11: built from the agent's real Claude history (export_claude_history), not from memory alone."""
     d = os.path.join(pdir, "skills/recipes/task-recipes")
     os.makedirs(d, exist_ok=True)
     sources = ", ".join([os.path.abspath(agent_dir)] + list(memory_dirs))
+    history = history or os.path.join(d, "claude-history.md")
     with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
-        f.write(RECIPES_SKILL.format(sources=sources))
+        f.write(RECIPES_SKILL.format(sources=sources, history=history))
 
 
 PROTECT_URL = "https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/protect-home.py"
@@ -743,6 +881,7 @@ def main():
     ap.add_argument("profile")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--home", default=os.path.expanduser("~"))
+    ap.add_argument("--no-recipes", action="store_true", help="не собирать рецепты (только для отладки)")
     a = ap.parse_args()
     if not re.fullmatch(r"[a-z0-9]+", a.profile):
         sys.exit("ОШИБКА: имя профиля — только маленькие латинские буквы и цифры")
@@ -769,6 +908,15 @@ def main():
         print("Пробный прогон: ничего не записано. Запуск с --apply запишет профиль.")
         return
     apply(p, a.profile, a.home)
+    print(f"История работы на Claude: {p.get('history_tasks', 0)} просьб владельца → claude-history.md")
+    if not a.no_recipes:
+        print("Рецепты: собираю по истории работы (до 20–40 минут, это нормально)…", flush=True)
+        n, rebuilt = build_recipes(a.profile, p["profile_dir"])
+        if n >= 3:
+            print(f"  рецепты: {n} ({'собраны заново' if rebuilt else 'история не менялась — оставил прежние'})")
+        else:
+            print(f"  ВНИМАНИЕ: рецепты не собрались (готовых: {n}). Перенос НЕ готов: проверь вход в ChatGPT "
+                  f"(hermes -p {a.profile} -z \"привет\") и запусти эту же команду с --apply ещё раз.")
     if p["schedules"]:
         made = create_schedules(a.profile, p["profile_dir"], p["schedules"], server_tz())
         print(f"Расписания: перенёс в Hermes {made} (уже были: {len(p['schedules']) - made}). Проверить: hermes -p {a.profile} cron list")
@@ -787,8 +935,7 @@ def main():
   2. остановить агента Claude этой папки (и убрать его из сторожа), иначе два движка дерутся за бота
   3. {step3}
   4. написать боту и убедиться, что ответил GPT
-  5. один раз написать агенту: «Собери RECIPES.md по навыку task-recipes» — он распишет рецепт под каждую свою задачу
-     (долго, до 20 минут, и ощутимо тратит лимит ChatGPT — делать по одному агенту)""")
+  5. рецепты задач уже собраны по реальной работе агента на Claude (см. выше); обновить — запустить эту же команду с --apply""")
 
 
 if __name__ == "__main__":
