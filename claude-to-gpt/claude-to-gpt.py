@@ -187,11 +187,13 @@ def find_fact_files(agent_dir, home):
     return found
 
 
-def owner_tz(agent_dir):
-    """Owner's UTC offset for «today» in the facts: +7 for Thailand, else Moscow."""
+def owner_tz(agent_dir, memory_dirs=()):
+    """Owner's UTC offset for «today» in the facts: +7 for Thailand, else Moscow. The memory index
+    counts too: a move abroad is usually remembered, not written into CLAUDE.md (15.11)."""
     text = ""
-    for name in ("CLAUDE.md", "USER.md"):
-        path = os.path.join(agent_dir, name)
+    paths = [os.path.join(agent_dir, n) for n in ("CLAUDE.md", "USER.md")]
+    paths += [os.path.join(d, "MEMORY.md") for d in memory_dirs]
+    for path in paths:
         if os.path.isfile(path):
             text += open(path, encoding="utf-8", errors="ignore").read()
     return 7 if re.search(r"UTC\+7|Asia/Bangkok|Таиланд|Пхукет", text) else 3
@@ -279,7 +281,7 @@ hermes cron create "0 9 26 8 *" "Напомни владельцу своими 
 Сразу после этого подтверждаю владельцу, на какое число и время поставила. Посмотреть очередь — `hermes cron list`, отменить — `hermes cron remove <id>`."""
 
 
-def replace_reminders(text):
+def replace_reminders(text, owner_zone=None):
     """09.11: the course alarm clock (remind-add.sh + tick) wakes the agent via its tmux room; on Hermes
     that never fires. Swap the section for Hermes' own cron, keeping the owner's time zone."""
     lines = text.splitlines()
@@ -295,29 +297,32 @@ def replace_reminders(text):
         if "remind" not in body and "БУДИЛЬНИК" not in body:
             return text
         tz = re.search(r"\b([A-Z][a-z]+/[A-Za-z_]+)\b", body)
-        tz = tz.group(1) if tz else "Europe/Moscow"
+        tz = owner_zone or (tz.group(1) if tz else "Europe/Moscow")
         return "\n".join(lines[:i + 1] + ["", REMINDERS_HERMES.format(tz=tz), ""] + lines[j:])
     return text
 
 
-def strip_claude_only(text):
+def strip_claude_only(text, owner_zone=None):
     """Lines that only make sense inside Claude Code; GPT takes them literally (30.10, 05.11)."""
     out = []
-    for line in replace_handoff(replace_reminders(text)).splitlines():
+    for line in replace_handoff(replace_reminders(text, owner_zone)).splitlines():
         if CLAUDE_ONLY.search(line) or re.match(r"\s*tmux send-keys -t \S+ Enter\s*$", line) or line.strip() == "sleep 1":
             continue
         line = re.sub(r'tmux send-keys -t (\S+) -l (".*")', r"hermes kanban create \2 --assignee <профиль \1>", line)
         line = re.sub(r"через (инструмент )?`?reply`?", "в Telegram", line)
+        if owner_zone:  # the remembered zone beats a stale «Europe/Moscow» in the rules
+            line = line.replace("Europe/Moscow", owner_zone)
         out.append(line)
     return "\n".join(out)
 
 
 def build_soul(agent_dir, memory_dirs):
     parts = []
+    zone = "Asia/Bangkok" if owner_tz(agent_dir, memory_dirs) == 7 else None
     for name in ("CLAUDE.md", "USER.md", "core/USER.md", "rules.md"):  # course starter keeps USER.md in core/
         p = os.path.join(agent_dir, name)
         if os.path.isfile(p):
-            parts.append(strip_claude_only(open(p, encoding="utf-8").read().strip()))
+            parts.append(strip_claude_only(open(p, encoding="utf-8").read().strip(), zone))
     if not parts:
         sys.exit(f"ОШИБКА: в {agent_dir} нет CLAUDE.md — это не папка агента")
     # 15.11: the Hermes gateway runs from the home dir, not the agent dir — anchor CLAUDE.md's relative paths.
@@ -450,7 +455,7 @@ def plan(agent_dir, profile, home):
         "soul": build_soul(agent_dir, mem),
         "memory_dirs": mem,
         "facts": find_fact_files(agent_dir, home),
-        "tz": owner_tz(agent_dir),
+        "tz": owner_tz(agent_dir, mem),
         "token": env.get("TELEGRAM_BOT_TOKEN", ""),
         "allowed": allowed_ids(agent_dir, env),
         "groq": env.get("GROQ_API_KEY", ""),
