@@ -174,6 +174,21 @@ def check_schedules():
         finally:
             del os.environ["C2G_UNIT_DIR"], os.environ["C2G_CRONTAB"]
         assert found == [("0 6 * * *", "Пришли план контента на день"), ("0 15 * * 1-5", "Собери цифры за день"), ("30 20 * * *", "Итоги дня")], found
+        # 15.11 Lunev: a script that builds the text in a variable and gates the hour inside
+        # («0 * * * *» + case "$1" … msg=…; send-keys "$msg») must NOT become an hourly job with the text "$msg"
+        dyn = os.path.join(root, "sales-schedule.sh")
+        open(dyn, "w").write('H=$(date +%H)\ncase "$1" in daily) [ "$H" = 10 ] || exit 0 ;; esac\n'
+                             'case "$1" in daily) msg="ПРОВЕРКА CRM" ;; esac\n'
+                             'tmux send-keys -t agent-marketing -l "$msg"; sleep 1; tmux send-keys -t agent-marketing Enter\n')
+        open(cron, "a").write(f"0 * * * * {dyn} daily\n")
+        os.environ["C2G_UNIT_DIR"], os.environ["C2G_CRONTAB"] = units, cron
+        try:
+            found2 = m.find_schedules(agent)
+            manual = m.find_manual_schedules(agent)
+        finally:
+            del os.environ["C2G_UNIT_DIR"], os.environ["C2G_CRONTAB"]
+        assert not any("$" in t for _, t in found2), found2
+        assert any("sales-schedule.sh daily" in x for x in manual), manual
         # --apply turns them into Hermes cron jobs in the server's zone, once (a re-run adds nothing)
         pdir = os.path.join(root, "profile"); os.makedirs(os.path.join(pdir, "cron"))
         calls = []
@@ -276,8 +291,28 @@ def check_core_memory():
         assert "tone.md" in block and "Пишем без канцелярита" in block and "clients.md" in block, block
 
 
+def check_pending_reminders():
+    # 15.11: reminders already queued in the course alarm clock (state/reminders.tsv) fire through the tmux
+    # room — after the move they would be lost. Future ones become one-shot Hermes cron jobs, past ones are skipped.
+    import importlib.util, datetime
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as root:
+        agent = os.path.join(root, "ai-assistant"); os.makedirs(os.path.join(agent, "state"))
+        open(os.path.join(agent, "state/reminders.tsv"), "w").write(
+            "2099-03-05T07:30:00+07:00\tоплатить сервер\n2001-01-01T10:00:00+00:00\tстарое\n")
+        pdir = os.path.join(root, "prof"); os.makedirs(os.path.join(pdir, "cron"))
+        calls = []
+        n = m.migrate_reminders(agent, "assistant", pdir, run=lambda cmd, **kw: calls.append(cmd))
+        assert n == 1 and len(calls) == 1, calls
+        c = calls[0]
+        assert c[:6] == ["hermes", "-p", "assistant", "cron", "create", "30 0 5 3 *"], c  # 07:30 +07 = 00:30 UTC
+        assert "оплатить сервер" in c[6] and "--repeat" in c and "UTC" in c, c
+
+
 def main():
     check_effort()
+    check_pending_reminders()
     check_core_memory()
     check_history_and_recipes()
     check_owner_tz_from_memory()
