@@ -181,8 +181,28 @@ def check_schedules():
         assert m.create_schedules("marketing", pdir, found, "UTC", run=lambda cmd, **kw: calls.append(cmd)) == 2
 
 
+def check_owner_tz_from_memory():
+    # 15.11 live run: CLAUDE.md said «Europe/Moscow», the memory index said the owner is in Thailand (UTC+7).
+    # GPT set «10 утра по моему времени» at 10:00 Moscow = 14:00 for the owner. Memory wins.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as root:
+        agent = os.path.join(root, "agent"); mem = os.path.join(root, "mem")
+        os.makedirs(agent); os.makedirs(mem)
+        open(os.path.join(agent, "CLAUDE.md"), "w").write(
+            "# Аня\n\n## Напоминания (будильник)\n\nСтавлю будильник `remind-add.sh`.\n"
+            "Время — всегда по часовому поясу владельца: **Europe/Moscow**.\n")
+        open(os.path.join(mem, "MEMORY.md"), "w").write("- [Вика в Таиланде, UTC+7](tz.md) — время называть по её местному\n")
+        assert m.owner_tz(agent) == 3
+        assert m.owner_tz(agent, [mem]) == 7
+        soul = m.build_soul(agent, [mem])
+        assert "--timezone Asia/Bangkok" in soul and "Europe/Moscow" not in soul, soul[:1500]
+
+
 def main():
     check_effort()
+    check_owner_tz_from_memory()
     check_schedules()
     check_shared_brain()
     check_host_gateway()
