@@ -116,10 +116,25 @@ skills.external_dirs; подключения — mcp_servers в config.yaml. К�
 """
 
 
+def _index_of(d):
+    """MEMORY.md if the folder has one; otherwise a built index — one line per note with its
+    description (front matter) or first heading/line (course agents keep core/memory/ without an index)."""
+    idx = os.path.join(d, "MEMORY.md")
+    if os.path.isfile(idx):
+        return open(idx, encoding="utf-8").read().strip()
+    lines = []
+    for f in sorted(glob.glob(os.path.join(d, "*.md"))):
+        text = open(f, encoding="utf-8", errors="ignore").read()
+        m = re.search(r"^description:\s*(.+)$", text, re.M) or re.search(r"^#+\s*(.+)$", text, re.M) \
+            or re.search(r"^(?!---)(\S.*)$", text, re.M)
+        lines.append(f"- {os.path.basename(f)} — {(m.group(1).strip().strip(chr(34)) if m else '')[:160]}")
+    return "\n".join(lines)
+
+
 def memory_block(memory_dirs):
     parts = []
     for d in memory_dirs:
-        index = open(os.path.join(d, "MEMORY.md"), encoding="utf-8").read().strip()
+        index = _index_of(d)
         parts.append(f"Подробности — в файле с этим именем в {d}/\n\n{index}")
     body = "\n\n".join(parts)
     return (f"{MEM_BEGIN}\n## Моя долгая память — оглавление (перед задачей читаю нужные файлы)\n"
@@ -135,8 +150,11 @@ def find_memory_dirs(agent_dir, home):
         rest = os.path.basename(os.path.dirname(d))[len(enc):]
         if rest not in ("", "-dashi-plugin-claude-code-plugin"):
             continue  # helper sessions (outbox, digests) are not the agent's memory
-        if os.path.isfile(os.path.join(d, "MEMORY.md")):
+        if os.path.isfile(os.path.join(d, "MEMORY.md")) or glob.glob(os.path.join(d, "*.md")):
             found.append(d)
+    core = os.path.join(os.path.abspath(agent_dir), "core/memory")  # course layout (CLAUDE.md: «core/memory/»)
+    if glob.glob(os.path.join(core, "*.md")):
+        found.append(core)
     return found
 
 
