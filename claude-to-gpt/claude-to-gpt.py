@@ -650,7 +650,8 @@ def recipes_ok(pdir):
     for p in glob.glob(os.path.join(pdir, "skills/recipes/task-recipes/**/RECIPES.md"), recursive=True):
         text = open(p, encoding="utf-8", errors="ignore").read()
         parts = re.split(r"^## ", text, flags=re.M)[1:]
-        return sum(1 for x in parts if "Шаги:" in x)
+        # a recipe = a «## » section with steps: the «Шаги:» label or a numbered list (GPT varies the labels)
+        return sum(1 for x in parts if "Шаги" in x or re.search(r"(?m)^\s*1[.)]\s", x))
     return 0
 
 
@@ -670,7 +671,10 @@ def build_recipes(profile, pdir, run=subprocess.run):
         return recipes_ok(pdir), False
     for old in glob.glob(os.path.join(d, "**/RECIPES.md"), recursive=True):
         os.replace(old, old + time.strftime(".bak-%Y%m%d-%H%M%S"))
-    run(["hermes", "-p", profile, "-z", BUILD_RECIPES], capture_output=True, text=True, timeout=3000)
+    r = run(["hermes", "-p", profile, "-z", BUILD_RECIPES], capture_output=True, text=True, timeout=3000)
+    out = ((getattr(r, "stdout", "") or "") + (getattr(r, "stderr", "") or "")) if r else ""
+    if re.search(r"quota exhausted|\b429\b|usage limit", out, re.I):
+        print("  ВНИМАНИЕ: кончился лимит ChatGPT — рецепты не собраны. " + (re.search(r"retry after \d+s", out) or [""])[0])
     n = recipes_ok(pdir)
     if n >= 3 and digest:
         with open(mark, "w") as f:
