@@ -87,7 +87,8 @@ a new hook text — only rebuilds the hook overlay + music + final compose, ~1 m
   energy cutting 0–0.5 s, with no speech removed.
 - **Retakes come from the words**: one transcription (word-level), an aborted phrase
   immediately restarted is removed — only the clean restart survives, subtitles never
-  show the botched attempt. If the energy analysis fails, the old word-gap rule
+  show the botched attempt. A whole sentence said twice in a row (owner re-recorded it
+  without stopping) is caught too: the first take is cut, the second stays. If the energy analysis fails, the old word-gap rule
   (`MAX_PAUSE` 0.35 s) is used as a fallback.
 - **Speed** = 1.2x on the final cut (pitch-preserved, not the "sped-up chipmunk" effect).
 - **Format** = vertical 1080x1920, burned-in subtitles (lowercase, centered, no box/plate,
