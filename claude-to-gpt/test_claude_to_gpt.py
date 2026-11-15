@@ -41,6 +41,13 @@ def make_agent(root):
         mem = os.path.join(home, ".claude/projects", enc + suffix, "memory")
         os.makedirs(mem)
         open(os.path.join(mem, "MEMORY.md"), "w").write(text + "\n")
+    # 15.11: the agent's MCP connections (project file + ~/.claude.json) move to Hermes; the Telegram bridge does not
+    json.dump({"mcpServers": {"chatplace": {"type": "http", "url": "https://mcp.example/x", "headers": {"Authorization": "Bearer SECRETMCP"}},
+                              "dashi-channel": {"command": "bun", "args": ["server.ts"]}}},
+              open(os.path.join(agent, ".mcp.json"), "w"))
+    json.dump({"mcpServers": {"gcal": {"command": "npx", "args": ["-y", "gcal-mcp"], "env": {"K": "SECRETENV"}}},
+               "projects": {agent: {"mcpServers": {"playwright": {"type": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp"]}}}}},
+              open(os.path.join(home, ".claude.json"), "w"))
     bindir = os.path.join(root, "bin")
     os.makedirs(bindir)
     stub = os.path.join(bindir, "hermes")
@@ -108,8 +115,76 @@ def check_host_gateway():
                 os.environ.pop(k, None)
 
 
+def check_shared_brain():
+    # 15.11: students keep the team board in their own shared folder (Britenkova: ~/ai-shared-brain/tasks.md
+    # + facts.md + calendar.md), not ~/second-brain/team-tasks.md — the GPT agent then invented board items.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as home:
+        shared = os.path.join(home, "ai-shared-brain")
+        os.makedirs(os.path.join(shared, "messages"))
+        for f in ("tasks.md", "facts.md", "calendar.md"):
+            open(os.path.join(shared, f), "w").write("x\n")
+        open(os.path.join(shared, "messages/old.md"), "w").write("x\n")
+        agent = os.path.join(home, "ai-strategist")
+        os.makedirs(os.path.join(agent, "materials"))
+        open(os.path.join(agent, "materials/point-a.md"), "w").write("x\n")
+        open(os.path.join(agent, "CLAUDE.md"), "w").write(f"Доска задач команды: {shared}/tasks.md\n")
+        found = m.find_fact_files(agent, home)
+        assert found[0] == os.path.join(shared, "tasks.md") + "|tail=40", found
+        for f in ("facts.md", "calendar.md"):
+            assert os.path.join(shared, f) in found, found
+        assert os.path.join(agent, "materials/point-a.md") in found, found
+        assert not any("messages" in f for f in found), found
+        # A board in ~/second-brain still wins when there is one.
+        os.makedirs(os.path.join(home, "second-brain"))
+        open(os.path.join(home, "second-brain/team-tasks.md"), "w").write("x\n")
+        assert m.find_fact_files(agent, home)[0] == os.path.join(home, "second-brain/team-tasks.md") + "|tail=40"
+
+
+def check_schedules():
+    # 15.11: the team routine wakes Claude agents by cron → tmux send-keys into their room. On GPT there is
+    # no room, so these wake-ups die silently — the converter must list them with a ready hermes cron command.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as root:
+        agent = os.path.join(root, "ai-marketing")
+        os.makedirs(agent)
+        units = os.path.join(root, "units"); os.makedirs(units)
+        open(os.path.join(units, "agent-marketing.service"), "w").write(
+            f"[Service]\nWorkingDirectory={agent}\nExecStart=/bin/sh -c '/usr/bin/tmux new-session -d -s agent-marketing ./start.sh'\n")
+        script = os.path.join(root, "morning.sh")
+        open(script, "w").write('tmux send-keys -t agent-marketing -l "Пришли план контента на день"\nsleep 1\ntmux send-keys -t agent-marketing Enter\n')
+        cron = os.path.join(root, "crontab")
+        open(cron, "w").write(f"0 6 * * * {script}\n"
+                              "0 15 * * 1-5 tmux send-keys -t =agent-marketing: -l 'Собери цифры за день' && tmux send-keys -t =agent-marketing: Enter\n"
+                              "0 7 * * * tmux send-keys -t agent -l 'Это техспец, не маркетолог'\n"
+                              "30 20 * * * tmux send-keys -t \"=agent-marketing:\" \"Итоги дня\" Enter\n"
+                              "*/5 * * * * /root/ai-marketing/scripts/backup.sh\n")
+        os.environ["C2G_UNIT_DIR"], os.environ["C2G_CRONTAB"] = units, cron
+        try:
+            found = m.find_schedules(agent)
+        finally:
+            del os.environ["C2G_UNIT_DIR"], os.environ["C2G_CRONTAB"]
+        assert found == [("0 6 * * *", "Пришли план контента на день"), ("0 15 * * 1-5", "Собери цифры за день"), ("30 20 * * *", "Итоги дня")], found
+        # --apply turns them into Hermes cron jobs in the server's zone, once (a re-run adds nothing)
+        pdir = os.path.join(root, "profile"); os.makedirs(os.path.join(pdir, "cron"))
+        calls = []
+        made = m.create_schedules("marketing", pdir, found, "UTC", run=lambda cmd, **kw: calls.append(cmd))
+        assert made == 3 and len(calls) == 3, calls
+        assert calls[0][:6] == ["hermes", "-p", "marketing", "cron", "create", "0 6 * * *"], calls[0]
+        assert calls[0][6] == "Пришли план контента на день" and "--timezone" in calls[0] and "UTC" in calls[0], calls[0]
+        json.dump({"jobs": [{"name": calls[0][calls[0].index("--name") + 1]}]}, open(os.path.join(pdir, "cron/jobs.json"), "w"))
+        calls.clear()
+        assert m.create_schedules("marketing", pdir, found, "UTC", run=lambda cmd, **kw: calls.append(cmd)) == 2
+
+
 def main():
     check_effort()
+    check_schedules()
+    check_shared_brain()
     check_host_gateway()
     with tempfile.TemporaryDirectory() as root:
         home, agent, bindir = make_agent(root)
@@ -120,6 +195,8 @@ def main():
         assert "Пробный прогон" in r.stdout and "555, 777" in r.stdout, r.stdout
         assert not os.path.exists(pdir), "dry run must not write"
         assert "FAKE" not in r.stdout and "gsk_fake" not in r.stdout, "secrets must not be printed"
+        assert "подключения (MCP): chatplace, gcal, playwright" in r.stdout, r.stdout
+        assert "SECRETMCP" not in r.stdout and "SECRETENV" not in r.stdout, "MCP secrets must not be printed"
 
         r = run(home, agent, bindir, "--apply")
         assert r.returncode == 0, r.stderr
@@ -183,6 +260,13 @@ def main():
         assert "только из файлов владельца" in soul, "invented prices 250/350k"
         assert "всё равно даю план" in soul, "answered only with a question"
         assert "сверяю с источником" in soul, "repeated stale board statuses as facts"
+        mcp = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))["mcp_servers"]
+        assert set(mcp) == {"chatplace", "gcal", "playwright"}, mcp
+        assert mcp["chatplace"] == {"url": "https://mcp.example/x", "headers": {"Authorization": "Bearer SECRETMCP"}}, mcp
+        assert mcp["playwright"] == {"command": "npx", "args": ["-y", "@playwright/mcp"]}, mcp
+        assert mcp["gcal"]["env"] == {"K": "SECRETENV"}, mcp
+        # 15.11: Hermes runs from the home dir, so relative paths from CLAUDE.md (core/…, materials/…) must be anchored
+        assert f"Моя рабочая папка — {agent}" in soul, "SOUL does not say where relative paths start"
         # Fable 5.1 blind verdict 10.11
         assert "ровно N шагов" in soul and "командой date" in soul and "сортирую по риску" in soul
         assert "предложение, нужно твоё да" in soul and "ни имён файлов" in soul
