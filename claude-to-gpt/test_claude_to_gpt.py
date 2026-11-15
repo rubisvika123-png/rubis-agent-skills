@@ -51,7 +51,10 @@ def make_agent(root):
     bindir = os.path.join(root, "bin")
     os.makedirs(bindir)
     stub = os.path.join(bindir, "hermes")
-    open(stub, "w").write('#!/bin/sh\nmkdir -p "$HOME/.hermes/profiles/$3"\n')
+    open(stub, "w").write('#!/bin/sh\n'
+        'if [ "$3" = "-z" ]; then echo "$2" >> "$HOME/z-calls"; r="$HOME/.hermes/profiles/$2/skills/recipes/task-recipes/RECIPES.md"; '
+        'printf "## A\\nШаги: 1\\n## B\\nШаги: 1\\n## C\\nШаги: 1\\n" > "$r"; exit 0; fi\n'
+        'mkdir -p "$HOME/.hermes/profiles/$3"\n')
     os.chmod(stub, stat.S_IRWXU)
     open(os.path.join(bindir, "protect-home.py"), "w").write("#!/usr/bin/env python3\n")
     return home, agent, bindir
@@ -200,8 +203,62 @@ def check_owner_tz_from_memory():
         assert "--timezone Asia/Bangkok" in soul and "Europe/Moscow" not in soul, soul[:1500]
 
 
+def check_history_and_recipes():
+    # 15.11 (Vika): recipes must be built FRESH at migration from the agent's real Claude work
+    # (what the owner asked, which commands/files Claude used, the answer she accepted, where she corrected),
+    # automatically — not a manual step after the move that nobody runs.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as home:
+        agent = os.path.join(home, "ai-marketing"); os.makedirs(agent)
+        enc = re.sub(r"[^A-Za-z0-9]", "-", agent)
+        tdir = os.path.join(home, ".claude/projects", enc + "-dashi-plugin-claude-code-plugin"); os.makedirs(tdir)
+        def u(text, ts): return {"type": "user", "timestamp": ts, "message": {"role": "user", "content": [{"type": "text", "text": text}]}}
+        def a(blocks, ts): return {"type": "assistant", "timestamp": ts, "message": {"role": "assistant", "content": blocks}}
+        lines = [
+            u('<channel source="telegram" chat_id="1" ts="2026-11-10T10:00:00Z">Сделай пост в Threads про агентов</channel>', "2026-11-10T10:00:00Z"),
+            a([{"type": "tool_use", "name": "Read", "input": {"file_path": "/root/ai-marketing/formats.md"}},
+               {"type": "tool_use", "name": "Bash", "input": {"command": "python3 scripts/post.py --token=SECRET123 --dry"}}], "2026-11-10T10:01:00Z"),
+            a([{"type": "tool_use", "name": "mcp__dashi-channel__reply", "input": {"chat_id": "1", "text": "Вот пост: агенты работают ночью."}}], "2026-11-10T10:02:00Z"),
+            u('<channel source="telegram" chat_id="1" ts="2026-11-10T10:05:00Z">Нет, короче и без слова ночью</channel>', "2026-11-10T10:05:00Z"),
+            a([{"type": "tool_use", "name": "mcp__dashi-channel__reply", "input": {"chat_id": "1", "text": "Короче: агенты работают, пока вы спите."}}], "2026-11-10T10:06:00Z"),
+            u('<channel source="telegram" chat_id="1" ts="2026-11-10T10:07:00Z">Ок, публикуй</channel>', "2026-11-10T10:07:00Z"),
+        ]
+        with open(os.path.join(tdir, "s1.jsonl"), "w", encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(x, ensure_ascii=False) for x in lines) + "\n")
+        out = os.path.join(home, "hist.md")
+        n = m.export_claude_history(agent, home, out)
+        h = open(out, encoding="utf-8").read()
+        assert n == 3, (n, h)
+        for must in ("Сделай пост в Threads", "/root/ai-marketing/formats.md", "post.py", "Вот пост: агенты работают ночью.",
+                     "Нет, короче и без слова ночью", "Ок, публикуй"):
+            assert must in h, (must, h)
+        assert "SECRET123" not in h, "secrets must be redacted from the history"
+        assert h.index("Ок, публикуй") < h.index("Сделай пост"), "newest first"
+        # the skill points at the history as the MAIN source
+        pdir = os.path.join(home, "prof")
+        m.install_recipes_skill(pdir, agent, [], out)
+        sk = open(os.path.join(pdir, "skills/recipes/task-recipes/SKILL.md"), encoding="utf-8").read()
+        assert out in sk and "дословно" in sk and "те же команды" in sk, sk
+        # validation of the built RECIPES.md
+        rp = os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md")
+        assert m.recipes_ok(pdir) == 0
+        open(rp, "w", encoding="utf-8").write("## Пост\nШаги: 1\n## Рилс\nШаги: 1\n## Отчёт\nШаги: 1\n")
+        assert m.recipes_ok(pdir) == 3
+        # 15.11 (Vika): «меньше трёх» is too blunt — the minimum grows with the volume of real work
+        assert m.recipes_needed(out) == 3, "small history → floor of 3"
+        big = os.path.join(home, "big.md")
+        open(big, "w", encoding="utf-8").write("".join(f"\n## 2026-11-{i % 28 + 1:02d} 10:00\nВладелец: задача {i}\n" for i in range(150)))
+        assert m.recipes_needed(big) == 10, m.recipes_needed(big)
+        huge = os.path.join(home, "huge.md")
+        open(huge, "w", encoding="utf-8").write("".join(f"\n## 2026-11-01 10:00\nЗадача (расписание или другой агент): x{i}\n" for i in range(900)))
+        assert m.recipes_needed(huge) == 15, "capped"
+
+
 def main():
     check_effort()
+    check_history_and_recipes()
     check_owner_tz_from_memory()
     check_schedules()
     check_shared_brain()
@@ -280,6 +337,10 @@ def main():
         assert "только из файлов владельца" in soul, "invented prices 250/350k"
         assert "всё равно даю план" in soul, "answered only with a question"
         assert "сверяю с источником" in soul, "repeated stale board statuses as facts"
+        # 15.11: --apply builds fresh recipes itself (one hermes -z), and a re-run with the same history does not rebuild
+        assert os.path.isfile(os.path.join(pdir, "skills/recipes/task-recipes/claude-history.md"))
+        assert open(os.path.join(home, "z-calls")).read().split() == ["testgpt"], "recipes not built on --apply"
+        assert "рецепты: 3" in r.stdout, r.stdout
         mcp = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))["mcp_servers"]
         assert set(mcp) == {"chatplace", "gcal", "playwright"}, mcp
         assert mcp["chatplace"] == {"url": "https://mcp.example/x", "headers": {"Authorization": "Bearer SECRETMCP"}}, mcp
@@ -304,7 +365,7 @@ def main():
         assert "вызовом `reply`" not in soul
         assert 'hermes kanban create "ЗАДАЧА ОТ ЛИЗЫ: проверь" --assignee <профиль coder-denis>' in soul
         assert "через `reply`" not in soul and "Бриф Вике — только в Telegram." in soul
-        assert "task-recipes" in r.stdout, "the one-time recipes command must be printed"
+        assert "рецепты задач уже собраны" in r.stdout, "the run must say recipes are built, not ask for a manual step"
 
         # Re-run keeps one token line and backs up the previous SOUL without losing the very first backup
         # (10.11: students re-run the converter to get new rules).
