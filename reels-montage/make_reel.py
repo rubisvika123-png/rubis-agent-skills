@@ -93,7 +93,7 @@ def transcribe_words(video):
     return words
 
 # ---------- 3a. drop stumble/retakes ----------
-def drop_retakes(words, max_n=6, max_gap=4):
+def drop_retakes(words, max_n=6, max_gap=4, long_n=5, long_gap=30):
     """Remove a botched first attempt when a phrase is restarted.
 
     Detects: a run of n>=2 words that reappears (normalized) shortly after,
@@ -102,6 +102,11 @@ def drop_retakes(words, max_n=6, max_gap=4):
     stays. ponytail: exact-match heuristic, n>=2 to avoid nuking intentional
     single-word repeats ("да да"); tune max_n/max_gap on real videos, may miss
     non-verbatim restarts.
+
+    A whole sentence said twice (the owner re-recorded it without stopping) has
+    the restart a full sentence later, far beyond max_gap: a run of >= long_n
+    identical words may therefore be up to long_gap words apart. Short phrases
+    (a refrain like «пиши слово агент») keep the tight max_gap.
     """
     norm = [_norm(w["text"]) for w in words]
     keep = [True]*len(words)
@@ -113,7 +118,7 @@ def drop_retakes(words, max_n=6, max_gap=4):
         for n in range(max_n, 1, -1):
             if i + 2*n > len(words): continue
             a = norm[i:i+n]
-            for gap in range(0, max_gap+1):
+            for gap in range(0, (long_gap if n >= long_n else max_gap)+1):
                 j = i + n + gap
                 if j + n > len(words): break
                 if a == norm[j:j+n]:
@@ -416,6 +421,18 @@ def _selfcheck():
     assert abs(pause_removals([(1.1,3.0)], w2, 6.0)[0][0]-(1.1+E_GUARD_SENTENCE_MS/1000))<1e-9
     rr = retake_removals(words, kept)
     assert rr and rr[0][0] > 1.1 and rr[0][1] < 4.0, rr         # the aborted first attempt is cut
+    # whole sentence said twice in a row (15.11: the reel opened with the same
+    # 12-word sentence twice): the first take goes, the second stays
+    s = "ребята мне мой ии агент сделал в threads три миллиона просмотров при этом".split()
+    t = 0.0; ww = []
+    for x in s + s + ["вот", "мой", "маркетолог"]:
+        ww.append(w(x, t, t + .3)); t += .4
+    k2 = [x["text"] for x in drop_retakes(ww)]
+    assert k2 == s + ["вот", "мой", "маркетолог"], k2
+    # a short phrase repeated later on purpose (a refrain) is NOT a retake
+    r = "пиши слово агент".split()
+    ww = [w(x, i * .4, i * .4 + .3) for i, x in enumerate(r + "и я пришлю курс а ещё".split() + r)]
+    assert len(drop_retakes(ww)) == len(ww), [x["text"] for x in drop_retakes(ww)]
     assert silence_floor([-20.0]*80 + [-70.0]*20) == -30.0       # clamp to the loud end
     print("selfcheck OK:", txt)
 
