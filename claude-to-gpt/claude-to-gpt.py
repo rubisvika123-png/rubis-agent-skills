@@ -334,7 +334,7 @@ def strip_claude_only(text, owner_zone=None):
     return "\n".join(out)
 
 
-def build_soul(agent_dir, memory_dirs):
+def build_soul(agent_dir, memory_dirs, profile=None):
     parts = []
     zone = "Asia/Bangkok" if owner_tz(agent_dir, memory_dirs) == 7 else None
     for name in ("CLAUDE.md", "USER.md", "core/USER.md", "rules.md"):  # course starter keeps USER.md in core/
@@ -346,6 +346,11 @@ def build_soul(agent_dir, memory_dirs):
     # 15.11: the Hermes gateway runs from the home dir, not the agent dir — anchor CLAUDE.md's relative paths.
     parts.append(f"## Моя папка\nМоя рабочая папка — {os.path.abspath(agent_dir)}. Пути из этого файла без «/» в начале "
                  f"(core/…, materials/…, memory/…) считаю от неё: открываю {os.path.abspath(agent_dir)}/core/… и т. д.")
+    if profile:  # 15.11 Lunev: «пришли Михаилу (chat_id …)» — Claude used reply with chat_id
+        parts.append(f"## Написать другому человеку в Telegram\nОтвет владельцу в этом чате уходит сам. Написать другому "
+                     f"человеку по chat_id (брокеру, сотруднику, «пришли X (chat_id N)»): "
+                     f"`hermes -p {profile} send -t telegram:<chat_id> \"текст\"` — от моего бота. "
+                     f"Файл: `MEDIA:/путь/к/файлу` в тексте.")
     parts.append(GPT_RULES.strip())
     if memory_dirs:
         parts.append(memory_block(memory_dirs))
@@ -526,7 +531,7 @@ def plan(agent_dir, profile, home):
     return {
         "agent_dir": agent_dir,
         "profile_dir": os.path.join(home, ".hermes/profiles", profile),
-        "soul": build_soul(agent_dir, mem),
+        "soul": build_soul(agent_dir, mem, profile),
         "memory_dirs": mem,
         "facts": find_fact_files(agent_dir, home),
         "tz": owner_tz(agent_dir, mem),

@@ -404,6 +404,8 @@ def main():
         assert mcp["gcal"]["env"] == {"K": "SECRETENV"}, mcp
         # 15.11: Hermes runs from the home dir, so relative paths from CLAUDE.md (core/…, materials/…) must be anchored
         assert f"Моя рабочая папка — {agent}" in soul, "SOUL does not say where relative paths start"
+        # 15.11 Lunev: tasks say «пришли Михаилу (chat_id 292395941)» — on Hermes that is `hermes -p <profile> send`
+        assert "hermes -p testgpt send -t telegram:<chat_id>" in soul, "no way to message another person"
         # Fable 5.1 blind verdict 10.11
         assert "ровно N шагов" in soul and "командой date" in soul and "сортирую по риску" in soul
         assert "предложение, нужно твоё да" in soul and "ни имён файлов" in soul
