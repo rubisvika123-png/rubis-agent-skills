@@ -258,8 +258,27 @@ def check_history_and_recipes():
         assert m.recipes_needed(huge) == 15, "capped"
 
 
+def check_core_memory():
+    # 15.11 Lunev: course agents keep memory in <agent>/core/memory/ (CLAUDE.md says so), often without
+    # MEMORY.md — 7 of 10 agents showed «память: НЕТ» and their notes would not reach GPT.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT)
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as home:
+        agent = os.path.join(home, "ai-marketing"); cm = os.path.join(agent, "core/memory")
+        os.makedirs(cm)
+        open(os.path.join(agent, "CLAUDE.md"), "w").write("# Маркетолог\n")
+        open(os.path.join(cm, "tone.md"), "w").write("---\nname: tone\ndescription: Пишем без канцелярита\n---\nтекст\n")
+        open(os.path.join(cm, "clients.md"), "w").write("# Клиенты агентства\nсписок\n")
+        dirs = m.find_memory_dirs(agent, home)
+        assert dirs == [cm], dirs
+        block = m.memory_block(dirs)
+        assert "tone.md" in block and "Пишем без канцелярита" in block and "clients.md" in block, block
+
+
 def main():
     check_effort()
+    check_core_memory()
     check_history_and_recipes()
     check_owner_tz_from_memory()
     check_schedules()
