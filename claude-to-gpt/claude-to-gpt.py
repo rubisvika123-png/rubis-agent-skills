@@ -409,16 +409,18 @@ def agent_rooms(agent_dir):
 SEND_TEXT = r"send-keys\s+-t\s+[\"']?=?{room}:?[\"']?\s+(?:-l\s+)?(?:\"([^\"]+)\"|'([^']+)')"
 
 
-def find_schedules(agent_dir):
-    """Cron wake-ups that type a task into this agent's tmux room (team routine lesson, 15.11).
-    On Hermes there is no room — each one must become a `hermes cron` job, or it silently stops."""
+def _scan_schedules(agent_dir):
+    """(simple, manual): simple = (cron time, literal task text) that can become a `hermes cron` job as is;
+    manual = cron lines that wake this agent but build the text in a variable or decide the hour inside the
+    script (Lunev 15.11: «0 * * * * sales-schedule.sh daily» + msg=… + send-keys "$msg") — these must be
+    moved by hand, never auto-created (it would be an hourly job with the text "$msg")."""
     rooms = agent_rooms(agent_dir)
     if not rooms:
-        return []
+        return [], []
     src = os.environ.get("C2G_CRONTAB")
     lines = open(src, encoding="utf-8").read() if src else subprocess.run(
         ["crontab", "-l"], capture_output=True, text=True).stdout
-    found = []
+    simple, manual = [], []
     for line in lines.splitlines():
         parts = line.split(None, 5)
         if line.lstrip().startswith("#") or len(parts) < 6:
@@ -429,9 +431,24 @@ def find_schedules(agent_dir):
         if script and os.path.isfile(script.group(1)):
             body += "\n" + open(script.group(1), encoding="utf-8", errors="ignore").read()
         for room in rooms:
-            for m in re.finditer(SEND_TEXT.format(room=re.escape(room)), body):
-                found.append((sched, m.group(1) or m.group(2)))
-    return found
+            texts = [m.group(1) or m.group(2) for m in re.finditer(SEND_TEXT.format(room=re.escape(room)), body)]
+            if not texts:
+                continue
+            if any("$" in t for t in texts) or (script and re.search(r"date \+%H|\$\{?1", body)):
+                manual.append(line.strip())
+            else:
+                simple += [(sched, t) for t in texts]
+    return simple, manual
+
+
+def find_schedules(agent_dir):
+    """Cron wake-ups with a literal task text — each becomes a `hermes cron` job on --apply."""
+    return _scan_schedules(agent_dir)[0]
+
+
+def find_manual_schedules(agent_dir):
+    """Cron wake-ups the converter cannot move safely — listed for the person doing the move."""
+    return _scan_schedules(agent_dir)[1]
 
 
 def server_tz():
@@ -462,6 +479,42 @@ def create_schedules(profile, pdir, schedules, tz, run=subprocess.run):
     return made
 
 
+def migrate_reminders(agent_dir, profile, pdir, run=subprocess.run):
+    """Reminders already queued in the course alarm clock (state/reminders.tsv: ISO time <TAB> text) would
+    die with the tmux room — future ones become one-shot Hermes cron jobs (UTC), once (named)."""
+    import datetime
+    try:
+        jobs = json.load(open(os.path.join(pdir, "cron/jobs.json"), encoding="utf-8"))
+        jobs = jobs.get("jobs", jobs) if isinstance(jobs, dict) else jobs
+        have = {j.get("name") for j in jobs if isinstance(j, dict)}
+    except (OSError, ValueError):
+        have = set()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    made = 0
+    for path in glob.glob(os.path.join(agent_dir, "**/reminders.tsv"), recursive=True):
+        for line in open(path, encoding="utf-8", errors="ignore"):
+            if "\t" not in line:
+                continue
+            when, text = line.rstrip("\n").split("\t", 1)
+            try:
+                t = datetime.datetime.fromisoformat(when.strip())
+            except ValueError:
+                continue
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=datetime.timezone.utc)
+            t = t.astimezone(datetime.timezone.utc)
+            if t <= now:
+                continue
+            name = f"напоминание (с Claude): {t:%d.%m %H:%M} {text[:30]}"
+            if name in have:
+                continue
+            run(["hermes", "-p", profile, "cron", "create", f"{t.minute} {t.hour} {t.day} {t.month} *",
+                 f"Напомни владельцу своими словами: {text}", "--repeat", "1", "--timezone", "UTC",
+                 "--deliver", "telegram", "--name", name], capture_output=True, text=True)
+            made += 1
+    return made
+
+
 def skill_dirs(agent_dir, home):
     cands = [os.path.join(agent_dir, ".claude/skills"), os.path.join(home, ".claude/skills")]
     return [d for d in cands if os.path.isdir(d)]
@@ -483,6 +536,7 @@ def plan(agent_dir, profile, home):
         "skills": skill_dirs(agent_dir, home),
         "mcp": find_mcp(agent_dir, home),
         "schedules": find_schedules(agent_dir),
+        "manual_schedules": find_manual_schedules(agent_dir),
     }
 
 
@@ -938,6 +992,11 @@ def main():
     print(f"  расписания (будили агента на Claude): {len(p['schedules']) or 'нет'}")
     for sched, text in p["schedules"]:
         print(f"    {sched} — {text[:70]}")
+    if p["manual_schedules"]:
+        print(f"  ВНИМАНИЕ: ещё {len(p['manual_schedules'])} расписаний будят агента сложным скриптом (текст или час решает сам скрипт) — "
+              "переносчик их НЕ переносит, перенести руками (hermes cron create с тем же временем и текстом):")
+        for line in p["manual_schedules"]:
+            print(f"    {line[:120]}")
     print(f"  факты в каждое сообщение: {', '.join(os.path.basename(x.split('|')[0]) for x in p['facts']) or 'только дата'}")
     if problems:
         sys.exit("ОШИБКА: " + "; ".join(problems))
@@ -956,6 +1015,9 @@ def main():
         else:
             print(f"  ВНИМАНИЕ: рецептов {n}, а по объёму работы агента нужно не меньше {need}. Перенос НЕ готов: проверь вход в ChatGPT "
                   f"(hermes -p {a.profile} -z \"привет\") и запусти эту же команду с --apply ещё раз.")
+    rem = migrate_reminders(a.agent_dir, a.profile, p["profile_dir"])
+    if rem:
+        print(f"Напоминания из будильника Claude: перенёс в Hermes {rem}. Проверить: hermes -p {a.profile} cron list")
     if p["schedules"]:
         made = create_schedules(a.profile, p["profile_dir"], p["schedules"], server_tz())
         print(f"Расписания: перенёс в Hermes {made} (уже были: {len(p['schedules']) - made}). Проверить: hermes -p {a.profile} cron list")
