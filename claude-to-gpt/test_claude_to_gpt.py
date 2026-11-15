@@ -258,6 +258,8 @@ def check_history_and_recipes():
         m.install_recipes_skill(pdir, agent, [], out)
         sk = open(os.path.join(pdir, "skills/recipes/task-recipes/SKILL.md"), encoding="utf-8").read()
         assert out in sk and "дословно" in sk and "те же команды" in sk, sk
+        # 15.11 (Vika): students tune the course templates; Claude's own working files must be reused, not rewritten
+        assert "своими файлами" in sk and "своё не пиши" in sk, sk
         # validation of the built RECIPES.md
         rp = os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md")
         assert m.recipes_ok(pdir) == 0
