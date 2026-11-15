@@ -372,7 +372,10 @@ def agent_rooms(agent_dir):
     agent = os.path.realpath(agent_dir)
     rooms = set()
     for uf in glob.glob(os.path.join(os.environ.get("C2G_UNIT_DIR", "/etc/systemd/system"), "*.service")):
-        text = open(uf, encoding="utf-8", errors="ignore").read()
+        try:
+            text = open(uf, encoding="utf-8", errors="ignore").read()
+        except OSError:  # dangling symlinks are normal in /etc/systemd/system (Lunev 15.11)
+            continue
         wd = re.search(r"^WorkingDirectory=(\S+)", text, re.M)
         if wd and os.path.realpath(wd.group(1)) == agent:
             rooms.update(re.findall(r"new-session -d -s (\S+)", text))

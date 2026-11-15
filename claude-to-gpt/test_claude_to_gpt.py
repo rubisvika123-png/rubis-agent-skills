@@ -93,6 +93,8 @@ def check_host_gateway():
             'c.setdefault(\'plugins\',{}).setdefault(\'enabled\',[]).append(sys.argv[2]); yaml.safe_dump(c,open(p,\'w\'))" '
             '"$HOME/.hermes/profiles/$2/config.yaml" "$5"\n  exit 0\nfi\nmkdir -p "$HOME/.hermes/profiles/$3"\n')
         units = os.path.join(root, "units"); os.makedirs(units)
+        # 15.11 Lunev's server: a dangling symlink in /etc/systemd/system crashed the dry run
+        os.symlink(os.path.join(root, "nowhere.service"), os.path.join(units, "dbus-org.example.service"))
         wd = os.path.join(root, "agent-watchdog.sh")
         open(wd, "w").write('declare -A AGENTS=(\n  [agent]="%s"\n)\ndeclare -A HERMES=()\ndeclare -A HERMES_WHO=()\n' % agent)
         open(os.path.join(units, "agent-watchdog.service"), "w").write("[Service]\nExecStart=/bin/bash %s\n" % wd)
