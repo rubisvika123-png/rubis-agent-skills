@@ -161,9 +161,25 @@ def find_fact_files(agent_dir, home):
                 found.append(path)
             elif f.endswith(".md") and FACT_NAME.search(f) and os.path.getsize(path) <= 12000:
                 found.append(path)
+    # Students' techspecs name the shared folder themselves (Britenkova 15.11: ~/ai-shared-brain/tasks.md):
+    # take the board the agent's own rules point to, then any *brain* folder in the home dir.
+    rules = ""
+    for name in ("CLAUDE.md", "rules.md", "core/rules.md"):
+        path = os.path.join(agent_dir, name)
+        if os.path.isfile(path):
+            rules += open(path, encoding="utf-8", errors="ignore").read()
+    boards += [p for p in re.findall(r"(/[\w./-]*tasks\.md)", rules) if "/sent-" not in p]
+    shared = [d for d in sorted(glob.glob(os.path.join(home, "*brain*"))) if os.path.isdir(d)]
+    boards += [os.path.join(d, n) for d in shared for n in ("team-tasks.md", "tasks.md")]
     board = next((b for b in boards if os.path.isfile(b)), None)
     if board:
         found.insert(0, board + "|tail=40")
+        shared.insert(0, os.path.dirname(board))
+    for d in dict.fromkeys(shared):  # shared facts and calendar sit next to the board
+        for n in ("facts.md", "calendar.md"):
+            path = os.path.join(d, n)
+            if os.path.isfile(path) and os.path.getsize(path) <= 12000 and path not in found:
+                found.append(path)
     for idx in sorted(glob.glob(os.path.join(home, "*/course-errors/INDEX.md"))) + [os.path.join(agent_dir, "course-errors/INDEX.md")]:
         if os.path.isfile(idx) and idx not in found:
             found.append(idx)
@@ -304,10 +320,120 @@ def build_soul(agent_dir, memory_dirs):
             parts.append(strip_claude_only(open(p, encoding="utf-8").read().strip()))
     if not parts:
         sys.exit(f"ОШИБКА: в {agent_dir} нет CLAUDE.md — это не папка агента")
+    # 15.11: the Hermes gateway runs from the home dir, not the agent dir — anchor CLAUDE.md's relative paths.
+    parts.append(f"## Моя папка\nМоя рабочая папка — {os.path.abspath(agent_dir)}. Пути из этого файла без «/» в начале "
+                 f"(core/…, materials/…, memory/…) считаю от неё: открываю {os.path.abspath(agent_dir)}/core/… и т. д.")
     parts.append(GPT_RULES.strip())
     if memory_dirs:
         parts.append(memory_block(memory_dirs))
     return "\n\n".join(parts) + "\n"
+
+
+BRIDGE_MCP = re.compile(r"dashi|telegram", re.I)  # Hermes talks to Telegram itself
+
+
+def find_mcp(agent_dir, home):
+    """MCP connections the Claude agent had (15.11): project .mcp.json, then ~/.claude.json user and
+    project scopes. Converted to Hermes mcp_servers (stdio: command/args/env; http: url/headers)."""
+    sources = []
+    for path in (os.path.join(agent_dir, ".mcp.json"), os.path.join(home, ".claude.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        sources.append(data.get("mcpServers") or {})
+        projects = data.get("projects") or {}
+        for d in (agent_dir, os.path.join(agent_dir, "dashi-plugin-claude-code/plugin")):
+            sources.append((projects.get(os.path.abspath(d)) or {}).get("mcpServers") or {})
+    out = {}
+    for servers in sources:
+        for name, srv in servers.items():
+            if name in out or BRIDGE_MCP.search(name) or not isinstance(srv, dict):
+                continue
+            if srv.get("url"):
+                conv = {"url": srv["url"]}
+                if srv.get("headers"):
+                    conv["headers"] = srv["headers"]
+            elif srv.get("command"):
+                conv = {k: srv[k] for k in ("command", "args", "env") if srv.get(k)}
+            else:
+                continue
+            out[name] = conv
+    return dict(sorted(out.items()))
+
+
+def agent_rooms(agent_dir):
+    """tmux room names of the Claude agent in this folder: from its systemd unit (WorkingDirectory)."""
+    agent = os.path.realpath(agent_dir)
+    rooms = set()
+    for uf in glob.glob(os.path.join(os.environ.get("C2G_UNIT_DIR", "/etc/systemd/system"), "*.service")):
+        text = open(uf, encoding="utf-8", errors="ignore").read()
+        wd = re.search(r"^WorkingDirectory=(\S+)", text, re.M)
+        if wd and os.path.realpath(wd.group(1)) == agent:
+            rooms.update(re.findall(r"new-session -d -s (\S+)", text))
+        # the course watchdog lists rooms too: [agent-marketing]="/root/ai-marketing"
+        for wd in re.findall(r"^ExecStart=.*?(/\S*watchdog\S*\.sh)", text, re.M):
+            if os.path.isfile(wd):
+                for room, path in re.findall(r'^\s*\[([^\]]+)\]="([^"]+)"', open(wd, encoding="utf-8", errors="ignore").read(), re.M):
+                    if os.path.realpath(path) == agent and not room.endswith(".service"):
+                        rooms.add(room)
+    return rooms
+
+
+SEND_TEXT = r"send-keys\s+-t\s+[\"']?=?{room}:?[\"']?\s+(?:-l\s+)?(?:\"([^\"]+)\"|'([^']+)')"
+
+
+def find_schedules(agent_dir):
+    """Cron wake-ups that type a task into this agent's tmux room (team routine lesson, 15.11).
+    On Hermes there is no room — each one must become a `hermes cron` job, or it silently stops."""
+    rooms = agent_rooms(agent_dir)
+    if not rooms:
+        return []
+    src = os.environ.get("C2G_CRONTAB")
+    lines = open(src, encoding="utf-8").read() if src else subprocess.run(
+        ["crontab", "-l"], capture_output=True, text=True).stdout
+    found = []
+    for line in lines.splitlines():
+        parts = line.split(None, 5)
+        if line.lstrip().startswith("#") or len(parts) < 6:
+            continue
+        sched, cmd = " ".join(parts[:5]), parts[5]
+        body = cmd
+        script = re.match(r"(?:bash\s+|sh\s+)?(/\S+\.sh)\b", cmd)
+        if script and os.path.isfile(script.group(1)):
+            body += "\n" + open(script.group(1), encoding="utf-8", errors="ignore").read()
+        for room in rooms:
+            for m in re.finditer(SEND_TEXT.format(room=re.escape(room)), body):
+                found.append((sched, m.group(1) or m.group(2)))
+    return found
+
+
+def server_tz():
+    try:
+        return open("/etc/timezone", encoding="utf-8").read().strip() or "UTC"
+    except OSError:
+        real = os.path.realpath("/etc/localtime")
+        return real.split("zoneinfo/", 1)[1] if "zoneinfo/" in real else "UTC"
+
+
+def create_schedules(profile, pdir, schedules, tz, run=subprocess.run):
+    """Each Claude wake-up becomes a Hermes cron job with the same time and task text (server's zone:
+    the old crontab ran on server time). Named, so a re-run of the converter does not duplicate them."""
+    try:
+        jobs = json.load(open(os.path.join(pdir, "cron/jobs.json"), encoding="utf-8"))
+        jobs = jobs.get("jobs", jobs) if isinstance(jobs, dict) else jobs
+        have = {j.get("name") for j in jobs if isinstance(j, dict)}
+    except (OSError, ValueError):
+        have = set()
+    made = 0
+    for sched, text in schedules:
+        name = f"с Claude: {sched} {text[:40]}"
+        if name in have:
+            continue
+        run(["hermes", "-p", profile, "cron", "create", sched, text, "--name", name,
+             "--deliver", "telegram", "--timezone", tz], capture_output=True, text=True)
+        made += 1
+    return made
 
 
 def skill_dirs(agent_dir, home):
@@ -329,6 +455,8 @@ def plan(agent_dir, profile, home):
         "allowed": allowed_ids(agent_dir, env),
         "groq": env.get("GROQ_API_KEY", ""),
         "skills": skill_dirs(agent_dir, home),
+        "mcp": find_mcp(agent_dir, home),
+        "schedules": find_schedules(agent_dir),
     }
 
 
@@ -367,6 +495,8 @@ def apply(p, profile, home):
     sk["creation_nudge_interval"] = 15
     sk["external_dirs"] = sorted(set((sk.get("external_dirs") or []) + p["skills"]))
     cfg.setdefault("memory", {}).update(memory_char_limit=8000, user_char_limit=4000)
+    if p["mcp"]:  # keep what the owner already set up in Hermes, add the Claude agent's connections
+        cfg["mcp_servers"] = {**p["mcp"], **(cfg.get("mcp_servers") or {})}
     stt = cfg.setdefault("stt", {})
     stt["language"] = "ru"
     if p["groq"]:  # voice messages go through the same Groq Whisper key the Claude agent used
@@ -623,6 +753,10 @@ def main():
     print(f"  бот: {'есть' if p['token'] else 'НЕТ'}; отвечает: {', '.join(p['allowed']) or 'НИКОМУ'}; "
           f"голосовые (Groq): {'есть' if p['groq'] else 'нет'}")
     print(f"  навыки: {', '.join(p['skills']) or 'нет'}")
+    print(f"  подключения (MCP): {', '.join(p['mcp']) or 'нет'}")
+    print(f"  расписания (будили агента на Claude): {len(p['schedules']) or 'нет'}")
+    for sched, text in p["schedules"]:
+        print(f"    {sched} — {text[:70]}")
     print(f"  факты в каждое сообщение: {', '.join(os.path.basename(x.split('|')[0]) for x in p['facts']) or 'только дата'}")
     if problems:
         sys.exit("ОШИБКА: " + "; ".join(problems))
@@ -630,6 +764,9 @@ def main():
         print("Пробный прогон: ничего не записано. Запуск с --apply запишет профиль.")
         return
     apply(p, a.profile, a.home)
+    if p["schedules"]:
+        made = create_schedules(a.profile, p["profile_dir"], p["schedules"], server_tz())
+        print(f"Расписания: перенёс в Hermes {made} (уже были: {len(p['schedules']) - made}). Проверить: hermes -p {a.profile} cron list")
     wd = handover_to_watchdog(a.agent_dir, a.profile, a.home, a.profile)
     if wd == "pending":
         print("Сторож: агента передам ему после шага 3 — запусти эту же команду с --apply ещё раз, это безопасно.")
