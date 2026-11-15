@@ -660,6 +660,17 @@ BUILD_RECIPES = ("Собери RECIPES.md по навыку task-recipes зан�
                  "В конце одной строкой: сколько рецептов собрано.")
 
 
+def recipes_needed(history_path):
+    """How many recipes a real agent should have (15.11, Vika: «меньше трёх» was a blind number):
+    one per ~15 tasks in its Claude history, at least 3, at most 15. 150 tasks → 10."""
+    try:
+        text = open(history_path, encoding="utf-8", errors="ignore").read()
+    except OSError:
+        return 3
+    tasks = len(re.findall(r"^(?:Владелец|Задача \(расписание или другой агент\)): ", text, re.M))
+    return max(3, min(15, -(-tasks // 15)))
+
+
 def build_recipes(profile, pdir, run=subprocess.run):
     """15.11 (Vika): fresh recipes are part of the move, not a manual step after it. Rebuilt whenever the
     Claude history changed since the last build; the previous RECIPES.md is kept as a backup."""
@@ -667,7 +678,8 @@ def build_recipes(profile, pdir, run=subprocess.run):
     hist = os.path.join(d, "claude-history.md")
     digest = hashlib.sha256(open(hist, "rb").read()).hexdigest() if os.path.isfile(hist) else ""
     mark = os.path.join(d, ".history-sha256")
-    if digest and os.path.isfile(mark) and open(mark).read().strip() == digest and recipes_ok(pdir) >= 3:
+    need = recipes_needed(hist)
+    if digest and os.path.isfile(mark) and open(mark).read().strip() == digest and recipes_ok(pdir) >= need:
         return recipes_ok(pdir), False
     for old in glob.glob(os.path.join(d, "**/RECIPES.md"), recursive=True):
         os.replace(old, old + time.strftime(".bak-%Y%m%d-%H%M%S"))
@@ -676,7 +688,7 @@ def build_recipes(profile, pdir, run=subprocess.run):
     if re.search(r"quota exhausted|\b429\b|usage limit", out, re.I):
         print("  ВНИМАНИЕ: кончился лимит ChatGPT — рецепты не собраны. " + (re.search(r"retry after \d+s", out) or [""])[0])
     n = recipes_ok(pdir)
-    if n >= 3 and digest:
+    if n >= need and digest:
         with open(mark, "w") as f:
             f.write(digest + "\n")
     return n, True
@@ -916,10 +928,12 @@ def main():
     if not a.no_recipes:
         print("Рецепты: собираю по истории работы (до 20–40 минут, это нормально)…", flush=True)
         n, rebuilt = build_recipes(a.profile, p["profile_dir"])
-        if n >= 3:
-            print(f"  рецепты: {n} ({'собраны заново' if rebuilt else 'история не менялась — оставил прежние'})")
+        need = recipes_needed(os.path.join(p["profile_dir"], "skills/recipes/task-recipes/claude-history.md"))
+        if n >= need:
+            print(f"  рецепты: {n} (нужно не меньше {need} по объёму работы; "
+                  f"{'собраны заново' if rebuilt else 'история не менялась — оставил прежние'})")
         else:
-            print(f"  ВНИМАНИЕ: рецепты не собрались (готовых: {n}). Перенос НЕ готов: проверь вход в ChatGPT "
+            print(f"  ВНИМАНИЕ: рецептов {n}, а по объёму работы агента нужно не меньше {need}. Перенос НЕ готов: проверь вход в ChatGPT "
                   f"(hermes -p {a.profile} -z \"привет\") и запусти эту же команду с --apply ещё раз.")
     if p["schedules"]:
         made = create_schedules(a.profile, p["profile_dir"], p["schedules"], server_tz())

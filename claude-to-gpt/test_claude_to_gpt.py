@@ -246,6 +246,14 @@ def check_history_and_recipes():
         assert m.recipes_ok(pdir) == 0
         open(rp, "w", encoding="utf-8").write("## Пост\nШаги: 1\n## Рилс\nШаги: 1\n## Отчёт\nШаги: 1\n")
         assert m.recipes_ok(pdir) == 3
+        # 15.11 (Vika): «меньше трёх» is too blunt — the minimum grows with the volume of real work
+        assert m.recipes_needed(out) == 3, "small history → floor of 3"
+        big = os.path.join(home, "big.md")
+        open(big, "w", encoding="utf-8").write("".join(f"\n## 2026-11-{i % 28 + 1:02d} 10:00\nВладелец: задача {i}\n" for i in range(150)))
+        assert m.recipes_needed(big) == 10, m.recipes_needed(big)
+        huge = os.path.join(home, "huge.md")
+        open(huge, "w", encoding="utf-8").write("".join(f"\n## 2026-11-01 10:00\nЗадача (расписание или другой агент): x{i}\n" for i in range(900)))
+        assert m.recipes_needed(huge) == 15, "capped"
 
 
 def main():
