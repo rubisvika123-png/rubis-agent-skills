@@ -390,6 +390,7 @@ def main():
         hook = os.path.join(home, ".hermes/hooks/protect-home.py")
         assert os.path.isfile(hook) and cfg["hooks"]["pre_tool_call"][0]["command"] == hook
         assert "Как я выполняю просьбы" in soul and "## Скорость" in soul
+        assert "## Скрипты — только файлом" in soul and "python3 - <<" in soul, "inline scripts trigger Allow/Deny (Лаптев 16.11)"
         # 05.11: self-check before «готово» — rule in the character + code gate on the way out
         assert "Проверка перед «готово»" in soul
         assert "Спросить другого агента = передать и ждать" in soul and "Заметки — коротко и по местам" in soul and "## Длина ответа владельцу" in soul and "## Цифры владельца — сразу в файл" in soul
