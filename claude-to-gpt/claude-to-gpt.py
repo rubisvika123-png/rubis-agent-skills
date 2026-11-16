@@ -574,6 +574,12 @@ def apply(p, profile, home):
     cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) if os.path.isfile(cfg_path) else {}
     cfg = cfg or {}
     cfg.setdefault("model", {}).update(provider="openai-codex", default="gpt-5.6-sol")
+    # 16.11 (Лаптев): a cloned config kept the backup agent's Groq address; side calls (the approval check) went there
+    for k in ("base_url", "api_key", "api_mode"):
+        cfg["model"].pop(k, None)
+    # Routine checks (heredoc scripts, ps, crontab) must not wait for the owner's tap in Telegram: a second model
+    # approves safe commands; only risky ones still ask (the Claude agent never asked at all).
+    cfg.setdefault("approvals", {})["mode"] = "smart"
     # 16.11 (Лаптев): the profile is cloned from the server's config; a backup agent there had Telegram limited
     # to [memory, todo] — the moved agent could not run commands or open files. A Claude agent had everything.
     cfg.setdefault("platform_toolsets", {})["telegram"] = ["hermes-telegram"]
