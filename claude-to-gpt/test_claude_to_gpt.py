@@ -336,10 +336,15 @@ def main():
         # 16.11 (Лаптев): the profile was cloned from a server config whose Telegram had only [memory, todo]
         # (a free backup agent) — the moved agent could not run a single command on its own server.
         os.makedirs(pdir)
-        open(os.path.join(pdir, "config.yaml"), "w").write("platform_toolsets:\n  cli: [hermes-cli]\n  telegram: [memory, todo]\n")
+        open(os.path.join(pdir, "config.yaml"), "w").write("model:\n  default: qwen\n  provider: custom:groq\n  base_url: https://api.groq.com/openai/v1\n"
+                                                             "platform_toolsets:\n  cli: [hermes-cli]\n  telegram: [memory, todo]\n")
         r = run(home, agent, bindir, "--apply")
         assert r.returncode == 0, r.stderr
-        assert yaml.safe_load(open(os.path.join(pdir, "config.yaml")))["platform_toolsets"]["telegram"] == ["hermes-telegram"]
+        c = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
+        assert c["platform_toolsets"]["telegram"] == ["hermes-telegram"]
+        # 16.11 (Лаптев): a leftover Groq base_url sent the approval check to Groq (401) → every heredoc asked the owner
+        assert "base_url" not in c["model"], c["model"]
+        assert c["approvals"]["mode"] == "smart", c.get("approvals")
         # 10.11: facts-inject puts board/reminders/prices on every message
         facts = open(os.path.join(pdir, "plugins/facts-inject/facts.txt")).read().splitlines()
         assert facts[0] == "tz=3", facts
