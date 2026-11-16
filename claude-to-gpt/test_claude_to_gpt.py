@@ -345,7 +345,30 @@ def check_recipes_kept_on_failed_rebuild():
         assert n == 5, n
 
 
+def check_rebuild_only_on_growth():
+    # 16.11 (Лаптев): a re-run for a config tweak rebuilt recipes for 3 agents and burned the owner's ChatGPT limit.
+    # Rebuild only when the Claude history has >=5 new owner requests (or recipes are missing).
+    import importlib.util, types
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as root:
+        d = os.path.join(root, "skills/recipes/task-recipes"); os.makedirs(d)
+        open(os.path.join(d, "RECIPES.md"), "w").write("".join(f"## З{i}\nШаги: 1) x\n\n" for i in range(4)))
+        hist = os.path.join(d, "claude-history.md")
+        reqs = lambda n: "".join(f"## 2026-11-1{i % 9}\nВладелец: просьба {i}\n\n" for i in range(n))
+        calls = []
+        run = lambda *a, **k: calls.append(1) or types.SimpleNamespace(stdout="", stderr="")
+        open(hist, "w").write(reqs(30))
+        open(os.path.join(d, ".history-sha256"), "w").write("old-style-digest\n")   # mark from an older converter
+        assert m.build_recipes("x", root, run=run) == (4, False) and not calls, "recipes present, no growth → no rebuild"
+        open(hist, "w").write(reqs(33))
+        assert m.build_recipes("x", root, run=run)[1] is False and not calls, "3 new requests → still no rebuild"
+        open(hist, "w").write(reqs(36))
+        m.build_recipes("x", root, run=run)
+        assert calls, "6 new requests → rebuild"
+
+
 def main():
+    check_rebuild_only_on_growth()
     check_recipes_kept_on_failed_rebuild()
     check_self_check()
     check_effort()

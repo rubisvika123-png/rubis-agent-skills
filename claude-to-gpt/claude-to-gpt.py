@@ -776,8 +776,23 @@ def build_recipes(profile, pdir, run=subprocess.run):
     digest = hashlib.sha256(open(hist, "rb").read()).hexdigest() if os.path.isfile(hist) else ""
     mark = os.path.join(d, ".history-sha256")
     need = recipes_needed(hist)
-    if digest and os.path.isfile(mark) and open(mark).read().strip() == digest and recipes_ok(pdir) >= need:
-        return recipes_ok(pdir), False
+    # 16.11 (Лаптев): a re-run for a settings tweak rebuilt recipes for three agents and used up the owner's
+    # ChatGPT limit for 3 hours. Rebuild only when the Claude history has >= 5 new owner requests since the last
+    # build (or the recipes are missing/too few). The mark keeps the hashes of the requests already covered.
+    reqs = set()
+    if os.path.isfile(hist):
+        reqs = {hashlib.sha256(x.encode()).hexdigest()[:16] for x in
+                re.findall(r"^(?:Владелец|Задача \(расписание или другой агент\)): .*$", open(hist, encoding="utf-8", errors="ignore").read(), re.M)}
+    try:
+        covered = set(json.load(open(mark)).get("requests", []))
+    except (OSError, ValueError, AttributeError):
+        covered = None  # no mark, or the plain-digest mark of an older converter
+    have = recipes_ok(pdir)
+    if have >= need and (covered is None or len(reqs - covered) < 5):
+        if covered is None and digest:
+            with open(mark, "w") as f:
+                json.dump({"digest": digest, "requests": sorted(reqs)}, f)
+        return have, False
     before = recipes_ok(pdir)
     moved = []
     for old in glob.glob(os.path.join(d, "**/RECIPES.md"), recursive=True):
@@ -798,7 +813,7 @@ def build_recipes(profile, pdir, run=subprocess.run):
     n = recipes_ok(pdir)
     if n >= need and digest:
         with open(mark, "w") as f:
-            f.write(digest + "\n")
+            json.dump({"digest": digest, "requests": sorted(reqs)}, f)
     return n, True
 
 
