@@ -312,7 +312,25 @@ def check_pending_reminders():
         assert "оплатить сервер" in c[6] and "--repeat" in c and "UTC" in c, c
 
 
+def check_self_check():
+    # 16.11 (Лаптев): move «passed» a CLI test, but in Telegram the agent had no terminal and asked Allow/Deny on every check
+    import importlib.util, socket, types
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"}}
+    assert m.audit_config(good) == []
+    bad = {"platform_toolsets": {"telegram": ["memory", "todo"]}, "model": {"provider": "openai-codex", "base_url": "https://api.groq.com/openai/v1"}}
+    probs = " ".join(m.audit_config(bad))
+    assert "нет команд" in probs and "чужой адрес" in probs and "Allow/Deny" in probs, probs
+    seen = {}
+    def fake(cmd, **kw):
+        seen["t"] = cmd[cmd.index("-t") + 1]
+        return types.SimpleNamespace(stdout=socket.gethostname() if "terminal" in seen["t"] else "нет инструмента", stderr="")
+    assert m.live_check("x", good, run=fake) and seen["t"] == "terminal,file", seen
+    assert not m.live_check("x", {"platform_toolsets": {"telegram": ["memory", "todo"]}}, run=fake) and seen["t"] == "memory,todo"
+
+
 def main():
+    check_self_check()
     check_effort()
     check_pending_reminders()
     check_core_memory()
@@ -345,6 +363,7 @@ def main():
         # 16.11 (Лаптев): a leftover Groq base_url sent the approval check to Groq (401) → every heredoc asked the owner
         assert "base_url" not in c["model"], c["model"]
         assert c["approvals"]["mode"] == "smart", c.get("approvals")
+        assert c["approvals"]["destructive_slash_confirm"] is False, "/new must not ask Approve/Cancel (Лаптев 16.11)"
         # 10.11: facts-inject puts board/reminders/prices on every message
         facts = open(os.path.join(pdir, "plugins/facts-inject/facts.txt")).read().splitlines()
         assert facts[0] == "tz=3", facts
