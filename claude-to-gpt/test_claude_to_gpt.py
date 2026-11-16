@@ -333,8 +333,13 @@ def main():
         assert "подключения (MCP): chatplace, gcal, playwright" in r.stdout, r.stdout
         assert "SECRETMCP" not in r.stdout and "SECRETENV" not in r.stdout, "MCP secrets must not be printed"
 
+        # 16.11 (Лаптев): the profile was cloned from a server config whose Telegram had only [memory, todo]
+        # (a free backup agent) — the moved agent could not run a single command on its own server.
+        os.makedirs(pdir)
+        open(os.path.join(pdir, "config.yaml"), "w").write("platform_toolsets:\n  cli: [hermes-cli]\n  telegram: [memory, todo]\n")
         r = run(home, agent, bindir, "--apply")
         assert r.returncode == 0, r.stderr
+        assert yaml.safe_load(open(os.path.join(pdir, "config.yaml")))["platform_toolsets"]["telegram"] == ["hermes-telegram"]
         # 10.11: facts-inject puts board/reminders/prices on every message
         facts = open(os.path.join(pdir, "plugins/facts-inject/facts.txt")).read().splitlines()
         assert facts[0] == "tz=3", facts

@@ -574,6 +574,9 @@ def apply(p, profile, home):
     cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) if os.path.isfile(cfg_path) else {}
     cfg = cfg or {}
     cfg.setdefault("model", {}).update(provider="openai-codex", default="gpt-5.6-sol")
+    # 16.11 (Лаптев): the profile is cloned from the server's config; a backup agent there had Telegram limited
+    # to [memory, todo] — the moved agent could not run commands or open files. A Claude agent had everything.
+    cfg.setdefault("platform_toolsets", {})["telegram"] = ["hermes-telegram"]
     cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(p["agent_dir"], profile), max_turns=150)
     cfg.setdefault("compression", {}).update(threshold=0.1, threshold_tokens=100000)  # cap: Hermes floors the % at 75 on <512K windows
     sk = cfg.setdefault("skills", {})
