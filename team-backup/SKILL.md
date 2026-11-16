@@ -22,7 +22,7 @@ description: Use when the owner asks to set up, check, fix or restore the nightl
 2. Поставь rsync, если нет: `apt-get install -y rsync`.
 3. Скопируй навык: `mkdir -p ~/.agents-backup && cp scripts/*.sh ~/.agents-backup/`.
 4. Склонируй хранилище в `~/.agents-backup-repo`, авторизуясь своим GitHub-токеном
-   (тем же, что в твоих MCP-настройках) через `git config --global credential.helper store`.
+   (тем же, что в твоих MCP-настройках; у агента на GPT он в ~/.hermes/config.yaml, раздел mcp_servers.github) через `git config --global credential.helper store`.
    Токен никогда не выводи в чат и в терминал.
    Если хранилище пустое — это нормально, первый запуск создаст первую копию.
 5. Пробный прогон: `~/.agents-backup/backup.sh --dry-run`.
@@ -35,6 +35,8 @@ description: Use when the owner asks to set up, check, fix or restore the nightl
 7. Расписание — каждую ночь в 03:30 по времени сервера. Добавь в crontab строку
    (путь к своему `secrets/channel.env` подставь свой):
    `30 3 * * * TB_NOTIFY_ENV=/root/<папка-техспеца>/secrets/channel.env /root/.agents-backup/backup.sh >> /root/.agents-backup/backup.log 2>&1`
+   Если ты агент на GPT (Hermes) — вместо `secrets/channel.env` поставь свой `~/.hermes/.env`:
+   `30 3 * * * TB_NOTIFY_ENV=/root/.hermes/.env /root/.agents-backup/backup.sh >> /root/.agents-backup/backup.log 2>&1`
    Если копия однажды не сохранится, владелец получит сообщение от твоего бота.
    Общая папка команды (общая память, доска задач) попадает в копию сама, если это
    `~/second-brain`. Если у команды общая папка называется иначе — добавь в эту же
@@ -56,7 +58,7 @@ description: Use when the owner asks to set up, check, fix or restore the nightl
      и выполни в ней `bun install` (так же, как в уроке про маркетолога);
    - попроси у владельца токен его бота (@BotFather → /mybots → бот → API Token) и
      впиши в `secrets/channel.env` этого агента вместе с Telegram ID владельца.
-4. Агенты на Hermes: поставь Hermes по уроку 10, восстановленные профили уже на
+4. Агенты на Hermes: поставь Hermes по уроку «Создание агента с нуля на GPT», восстановленные профили уже на
    месте; войди в ChatGPT для каждого профиля так же, как в уроке.
 5. Запусти агентов (`./start.sh` / службы), владелец пишет каждому боту «Проверка».
 6. Поставь резервную копию заново (раздел «Установка», шаги 3–8) — уже в то же

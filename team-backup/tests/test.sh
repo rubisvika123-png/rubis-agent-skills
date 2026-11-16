@@ -63,6 +63,11 @@ set +e; out=$(PATH=$T/bin:$PATH TB_NOTIFY_ENV=$T/notify.env $B); rc=$?; set -e
 grep -q "chat_id=777" $T/curl.log && grep -q "НЕ сохранилась" $T/curl.log || fail "owner not notified on failure"
 [ $rc = 2 ] && echo "$out" | grep -q "core/memory/notes.md" || fail "secret scan did not block (rc=$rc)"
 before=$(git -C $T/remote.git rev-list --count HEAD); [ "$before" = 1 ] || fail "pushed despite secret"
+# 3b. 16.11.2026: on a GPT-only server the notify file is ~/.hermes/.env with TELEGRAM_ALLOWED_USERS.
+rm -f $T/curl.log
+printf 'TELEGRAM_BOT_TOKEN=1:x\nTELEGRAM_ALLOWED_USERS=999\n' > $T/hermes.env
+set +e; PATH=$T/bin:$PATH TB_NOTIFY_ENV=$T/hermes.env $B >/dev/null; set -e
+grep -q "chat_id=999" $T/curl.log || fail "Hermes owner not notified on failure"
 sed -i '/token/d' $H/ai-marketing/core/memory/notes.md
 
 # 4. Restore onto an empty new home gives back the same files.
