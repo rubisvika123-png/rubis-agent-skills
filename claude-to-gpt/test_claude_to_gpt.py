@@ -329,7 +329,24 @@ def check_self_check():
     assert not m.live_check("x", {"platform_toolsets": {"telegram": ["memory", "todo"]}}, run=fake) and seen["t"] == "memory,todo"
 
 
+def check_recipes_kept_on_failed_rebuild():
+    # 16.11 (Лаптев): a re-run hit the ChatGPT limit mid-rebuild — the old RECIPES.md was moved aside and the agent
+    # was left with 0 recipes. A failed or weaker rebuild must keep the previous recipes.
+    import importlib.util, types
+    spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    with tempfile.TemporaryDirectory() as root:
+        d = os.path.join(root, "skills/recipes/task-recipes"); os.makedirs(d)
+        old = "".join(f"## Задача {i}\nШаги: 1) сделать\n\n" for i in range(5))
+        open(os.path.join(d, "RECIPES.md"), "w").write(old)
+        open(os.path.join(d, "claude-history.md"), "w").write("## 2026-11-16\nВладелец: новая просьба\n")
+        limit = lambda *a, **k: types.SimpleNamespace(stdout="HTTP 429: The usage limit has been reached", stderr="")
+        n, rebuilt = m.build_recipes("x", root, run=limit)
+        assert open(os.path.join(d, "RECIPES.md")).read() == old, "old recipes must survive a failed rebuild"
+        assert n == 5, n
+
+
 def main():
+    check_recipes_kept_on_failed_rebuild()
     check_self_check()
     check_effort()
     check_pending_reminders()

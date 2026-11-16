@@ -778,12 +778,23 @@ def build_recipes(profile, pdir, run=subprocess.run):
     need = recipes_needed(hist)
     if digest and os.path.isfile(mark) and open(mark).read().strip() == digest and recipes_ok(pdir) >= need:
         return recipes_ok(pdir), False
+    before = recipes_ok(pdir)
+    moved = []
     for old in glob.glob(os.path.join(d, "**/RECIPES.md"), recursive=True):
-        os.replace(old, old + time.strftime(".bak-%Y%m%d-%H%M%S"))
+        bak = old + time.strftime(".bak-%Y%m%d-%H%M%S")
+        os.replace(old, bak)
+        moved.append((old, bak))
     r = run(["hermes", "-p", profile, "-z", BUILD_RECIPES], capture_output=True, text=True, timeout=3000)
     out = ((getattr(r, "stdout", "") or "") + (getattr(r, "stderr", "") or "")) if r else ""
     if re.search(r"quota exhausted|\b429\b|usage limit", out, re.I):
         print("  ВНИМАНИЕ: кончился лимит ChatGPT — рецепты не собраны. " + (re.search(r"retry after \d+s", out) or [""])[0])
+    if recipes_ok(pdir) < before:  # 16.11 (Лаптев): a failed/weaker rebuild must not leave the agent without recipes
+        for old, bak in moved:
+            if os.path.exists(old):
+                os.replace(old, old + time.strftime(".weak-%Y%m%d-%H%M%S"))
+            os.replace(bak, old)
+        print(f"  новые рецепты не собрались полностью — оставил прежние ({before})")
+        return before, False
     n = recipes_ok(pdir)
     if n >= need and digest:
         with open(mark, "w") as f:
