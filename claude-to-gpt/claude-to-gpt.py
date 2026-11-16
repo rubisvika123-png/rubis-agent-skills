@@ -15,6 +15,7 @@ switch-over is a separate, deliberate step printed at the end.
 
 Usage: claude-to-gpt.py AGENT_DIR PROFILE [--apply]
 """
+import socket
 import argparse, hashlib, urllib.request, glob, json, os, re, shutil, subprocess, sys, time
 
 import yaml
@@ -580,6 +581,7 @@ def apply(p, profile, home):
     # Routine checks (heredoc scripts, ps, crontab) must not wait for the owner's tap in Telegram: a second model
     # approves safe commands; only risky ones still ask (the Claude agent never asked at all).
     cfg.setdefault("approvals", {})["mode"] = "smart"
+    cfg["approvals"]["destructive_slash_confirm"] = False  # /new (lesson: «напишите /new») must not ask Approve/Cancel
     # 16.11 (Лаптев): the profile is cloned from the server's config; a backup agent there had Telegram limited
     # to [memory, todo] — the moved agent could not run commands or open files. A Claude agent had everything.
     cfg.setdefault("platform_toolsets", {})["telegram"] = ["hermes-telegram"]
@@ -781,6 +783,37 @@ def build_recipes(profile, pdir, run=subprocess.run):
         with open(mark, "w") as f:
             f.write(digest + "\n")
     return n, True
+
+
+def audit_config(cfg):
+    """16.11 (Лаптев): the profile is cloned from the server's own config, and a backup agent there left
+    settings that broke the moved agent silently. Everything the move relies on, checked after writing."""
+    problems = []
+    tg = (cfg.get("platform_toolsets") or {}).get("telegram") or []
+    if not ({"hermes-telegram", "terminal"} & set(tg)):
+        problems.append(f"в Telegram у агента нет команд на сервере (набор инструментов {tg})")
+    m = cfg.get("model") or {}
+    if m.get("provider") != "openai-codex":
+        problems.append(f"мозг не ChatGPT ({m.get('provider')})")
+    if m.get("base_url"):
+        problems.append(f"у модели чужой адрес {m['base_url']}")
+    if (cfg.get("approvals") or {}).get("mode") != "smart":
+        problems.append("подтверждения команд не умные — владельцу будут приходить окна Allow/Deny на каждую проверку")
+    return problems
+
+
+def live_check(profile, cfg, run=subprocess.run):
+    """16.11 (Лаптев): «-z» runs with the CLI tool set, so a test there passed while the Telegram agent could not
+    run a single command. Ask for `hostname` with exactly the tools the agent has in Telegram."""
+    tg = (cfg.get("platform_toolsets") or {}).get("telegram") or []
+    tools = ",".join("terminal,file" if t == "hermes-telegram" else t for t in tg) or "memory"
+    try:
+        r = run(["hermes", "-p", profile, "chat", "-q", "Выполни команду hostname в терминале и пришли только её вывод.",
+                 "--oneshot", "-t", tools], capture_output=True, text=True, timeout=300)
+        out = ((getattr(r, "stdout", "") or "") + (getattr(r, "stderr", "") or "")) if r else ""
+    except (OSError, subprocess.SubprocessError) as e:
+        out = str(e)
+    return socket.gethostname() in out
 
 
 RECIPES_SKILL = """---
@@ -1033,6 +1066,15 @@ def main():
         else:
             print(f"  ВНИМАНИЕ: рецептов {n}, а по объёму работы агента нужно не меньше {need}. Перенос НЕ готов: проверь вход в ChatGPT "
                   f"(hermes -p {a.profile} -z \"привет\") и запусти эту же команду с --apply ещё раз.")
+    cfg_now = yaml.safe_load(open(os.path.join(p["profile_dir"], "config.yaml"), encoding="utf-8")) or {}
+    problems = audit_config(cfg_now)
+    if problems:
+        print("  ВНИМАНИЕ: настройки агента неверные — " + "; ".join(problems) + ". Перенос НЕ готов.")
+    elif live_check(a.profile, cfg_now):
+        print("  проверка как в Telegram: агент выполнил команду на сервере — ок")
+    else:
+        print(f"  ВНИМАНИЕ: с инструментами из Telegram агент не выполнил команду на сервере (hostname). Перенос НЕ готов: "
+              f"проверь вход в ChatGPT (hermes -p {a.profile} -z \"привет\") и запусти эту же команду с --apply ещё раз.")
     rem = migrate_reminders(a.agent_dir, a.profile, p["profile_dir"])
     if rem:
         print(f"Напоминания из будильника Claude: перенёс в Hermes {rem}. Проверить: hermes -p {a.profile} cron list")
