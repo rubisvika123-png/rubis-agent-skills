@@ -18,7 +18,7 @@ notify_on_fail() {
   rc=$?
   if [ "$rc" != 0 ] && [ -f "${TB_NOTIFY_ENV:-}" ]; then
     tok=$(grep -m1 '^TELEGRAM_BOT_TOKEN=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' || true)
-    to=$(grep -m1 '^TELEGRAM_ALLOWED_USER_IDS=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' | cut -d, -f1 || true)
+    to=$(grep -m1 -E '^TELEGRAM_ALLOWED_(USER_IDS|USERS)=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' | cut -d, -f1 || true)
     if [ -n "$tok" ] && [ -n "$to" ]; then
       curl -s -m 20 "https://api.telegram.org/bot$tok/sendMessage" --data-urlencode "chat_id=$to" \
         --data-urlencode "text=Резервная копия команды сегодня НЕ сохранилась. Напиши своему техспецу: «Почини резервную копию». Что случилось: $(tail -c 600 "$LOG")" >/dev/null || true
