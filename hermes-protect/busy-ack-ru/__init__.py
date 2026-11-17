@@ -44,6 +44,10 @@ def on_dispatch(event=None, gateway=None, **_):
     try:
         for adapter in list((getattr(gateway, "adapters", None) or {}).values()):
             _wrap(adapter)
+        # 17.11: one gateway can serve several profiles; their adapters are kept per profile
+        for by_platform in list((getattr(gateway, "_profile_adapters", None) or {}).values()):
+            for adapter in list((by_platform or {}).values()):
+                _wrap(adapter)
     except Exception:
         pass
     return None

@@ -41,4 +41,10 @@ assert ad._busy_session_handler is not orig
 # no gateway / odd adapters never break dispatch
 assert ba.on_dispatch(event=ev, gateway=None) is None
 assert ba.on_dispatch(event=ev, gateway=types.SimpleNamespace(adapters={"x": object()})) is None
+# 17.11 (Лаптев): one gateway serves several profiles; non-default profiles' adapters live in
+# gateway._profile_adapters[profile][platform], not in gateway.adapters — they were never wrapped
+pa = Adapter(); pa.set_busy_session_handler(orig)
+gw2 = types.SimpleNamespace(adapters={}, _profile_adapters={"joe": {"telegram": pa}})
+ba.on_dispatch(event=ev, gateway=gw2)
+assert pa._busy_session_handler is not orig, "profile adapter not wrapped"
 print("OK: busy-ack-ru tests passed")
