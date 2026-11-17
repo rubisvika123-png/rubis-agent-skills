@@ -316,11 +316,15 @@ def check_self_check():
     # 16.11 (Лаптев): move «passed» a CLI test, but in Telegram the agent had no terminal and asked Allow/Deny on every check
     import importlib.util, socket, types
     spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"}}
-    assert m.audit_config(good) == []
+    good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"},
+            "compression": {"threshold_tokens": 60000},
+            "auxiliary": {"compression": {"model": "gpt-5.6-luna"}, "background_review": {"model": "gpt-5.6-luna"}}}
+    assert m.audit_config(good) == [], m.audit_config(good)
     bad = {"platform_toolsets": {"telegram": ["memory", "todo"]}, "model": {"provider": "openai-codex", "base_url": "https://api.groq.com/openai/v1"}}
     probs = " ".join(m.audit_config(bad))
     assert "нет команд" in probs and "чужой адрес" in probs and "Allow/Deny" in probs, probs
+    # 17.11 (Лаптев): late compression and side calls on the main model burned the owner's ChatGPT limit
+    assert "сжимается слишком поздно" in probs and "background_review" in probs and "compression идёт" in probs, probs
     seen = {}
     def fake(cmd, **kw):
         seen["t"] = cmd[cmd.index("-t") + 1]
@@ -423,7 +427,10 @@ def main():
         cfg = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
         assert cfg["model"]["default"] == "gpt-5.6-sol"
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
-        assert cfg["compression"]["threshold_tokens"] == 100000, cfg.get("compression")
+        assert cfg["compression"]["threshold_tokens"] == 60000, cfg.get("compression")
+        for task in ("compression", "background_review"):
+            assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
+            assert cfg["auxiliary"][task]["model"] == "gpt-5.6-luna", cfg.get("auxiliary")
         assert os.path.join(agent, ".claude/skills") in cfg["skills"]["external_dirs"]
         assert cfg["stt"]["language"] == "ru" and cfg["stt"]["provider"] == "groq"
         assert cfg["session_reset"]["mode"] == "both" and cfg["display"]["show_commentary"] is False
