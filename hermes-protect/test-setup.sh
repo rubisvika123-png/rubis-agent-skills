@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*"; exit 1; }
 mkdir -p "$T/h/profiles/second" "$T/bin"
-printf 'model:\n  default: x\nhooks_auto_accept: false\n' > "$T/h/config.yaml"
+printf 'model:\n  default: x\n  provider: openai-codex\nhooks_auto_accept: false\n' > "$T/h/config.yaml"
 printf 'hooks:\n  pre_tool_call: []\ncompression:\n  enabled: true\n  threshold: 0.75\n  target_ratio: 0.2\n' > "$T/h/profiles/second/config.yaml"
 printf '#!/bin/sh\necho "$*" >> %s/calls\n' "$T" > "$T/bin/hermes"; chmod +x "$T/bin/hermes"
 printf "# Агент\n" > "$T/h/SOUL.md"
@@ -28,11 +28,18 @@ grep -q "## Цифры владельца — сразу в файл" "$T/h/SOUL
 grep -q "## Длина ответа владельцу" "$T/h/SOUL.md" || fail "length rule not in SOUL"
 [ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
 grep -q "plugins enable media-check" "$T/calls" && grep -q -- "--profile second plugins enable media-check" "$T/calls" || fail "media-check not enabled"
-grep -A3 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold: 0.1$' || fail "profile compression not lowered"
-grep -A4 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold_tokens: 100000$' || fail "profile cap missing"
-grep -A4 '^compression:' "$T/h/config.yaml" | grep -q 'threshold_tokens: 100000$' || fail "main cap missing"
+grep -A8 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold: 0.1$' || fail "profile compression not lowered"
+grep -A8 '^compression:' "$T/h/profiles/second/config.yaml" | grep -q 'threshold_tokens: 80000$' || fail "profile cap missing"
+grep -A8 '^compression:' "$T/h/config.yaml" | grep -q 'threshold_tokens: 80000$' || fail "main cap missing"
+grep -A6 '^compression:' "$T/h/config.yaml" | grep -q 'protect_last_n: 8$' || fail "short tail missing"
+# 17.11 (Лаптев): side calls go to the light model, only for agents on ChatGPT
+for task in compression background_review; do
+  grep -q "^config set auxiliary.$task.model gpt-5.6-luna --force$" "$T/calls" || fail "$task not on light model"
+  grep -q "^config set auxiliary.$task.provider openai-codex --force$" "$T/calls" || fail "$task provider"
+done
+grep -q -- "--profile second config set auxiliary" "$T/calls" && fail "light model set on a non-ChatGPT profile"
 grep -q 'target_ratio: 0.2' "$T/h/profiles/second/config.yaml" || fail "compression block damaged"
-grep -A3 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
+grep -A8 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
 [ -f "$T/h/plugins/busy-ack-ru/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/busy-ack-ru/plugin.yaml" ] || fail "busy-ack-ru not installed"
 grep -q -- "--profile second plugins enable busy-ack-ru" "$T/calls" || fail "busy-ack-ru not enabled"
 [ -f "$T/h/profiles/second/plugins/facts-inject/__init__.py" ] && grep -q "tz=3" "$T/h/profiles/second/plugins/facts-inject/facts.txt" || fail "facts-inject not installed"
