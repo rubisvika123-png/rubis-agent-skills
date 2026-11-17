@@ -40,6 +40,7 @@ for task in compression background_review; do
   grep -q "^config set auxiliary.$task.provider openai-codex --force$" "$T/calls" || fail "$task provider"
 done
 grep -q -- "--profile second config set auxiliary" "$T/calls" && fail "light model set on a non-ChatGPT profile"
+grep -q "^config set auxiliary.compression.reasoning_effort none --force$" "$T/calls" || fail "compression not on the fast lane (Лаптев 17.11)"
 grep -q 'target_ratio: 0.2' "$T/h/profiles/second/config.yaml" || fail "compression block damaged"
 grep -A8 '^compression:' "$T/h/config.yaml" | grep -q 'threshold: 0.1$' || fail "main compression not added"
 [ -f "$T/h/plugins/busy-ack-ru/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/busy-ack-ru/plugin.yaml" ] || fail "busy-ack-ru not installed"
