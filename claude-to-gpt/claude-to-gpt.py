@@ -6,7 +6,7 @@ Same recipe we ran on ourselves on 29.10 (техспец, Лиза, монтаж
   SOUL.md  = CLAUDE.md (+ USER.md, rules.md) + «довожу до конца» + «долгая память» + memory index
   .env     = the agent's own bot token + allowlist, so the client keeps talking to the same bot
   recipes  = skill task-recipes: the agent writes one explicit recipe per typical task (GPT is literal, 09.11)
-  config   = gpt-5.6-sol, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 60k, side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
+  config   = gpt-5.6-sol, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
 
 Run it as the agent's OS user on the agent's own server, after Hermes is installed.
 Dry run by default (prints the plan); --apply writes the profile. It never starts the
@@ -595,8 +595,10 @@ def apply(p, profile, home):
     cfg.setdefault("platform_toolsets", {})["telegram"] = ["hermes-telegram"]
     cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(p["agent_dir"], profile), max_turns=150)
     # 17.11 (Лаптев): at 100k every reply re-sent ~100k tokens and the owner's ChatGPT limit ran out before noon.
-    # 60k keeps each request lighter; Hermes floors the % at 75 on <512K windows, so the cap must be absolute.
-    cfg.setdefault("compression", {}).update(threshold=0.1, threshold_tokens=60000)
+    # A lower cap keeps each request lighter; Hermes floors the % at 75 on <512K windows, so the cap must be absolute.
+    cfg.setdefault("compression", {}).update(threshold=0.1, threshold_tokens=80000, protect_last_n=8)
+    # 17.11 (монтажёр): at 60k the fixed part alone (character + tools + a skill) was ~60k, so every message
+    # re-compressed 1-2 times (1-1.5 min each). 80k + a shorter kept tail leaves room after compression.
     # 17.11 (Лаптев): the hidden side calls ran on the main model — compression took 1-3 min per pass (the owner
     # waited) and the post-turn self-review replayed the whole chat (~1.1M tokens/day on 2 agents, mostly
     # «nothing to save»). The light model of the same ChatGPT subscription does both faster and cheaper.
@@ -842,7 +844,7 @@ def audit_config(cfg):
     if (cfg.get("approvals") or {}).get("mode") != "smart":
         problems.append("подтверждения команд не умные — владельцу будут приходить окна Allow/Deny на каждую проверку")
     thr = (cfg.get("compression") or {}).get("threshold_tokens") or 0
-    if not thr or thr > 60000:
+    if not thr or thr > 80000:
         problems.append(f"разговор сжимается слишком поздно ({thr or 'по умолчанию'}) — каждый ответ тратит много лимита")
     aux = cfg.get("auxiliary") or {}
     for task in ("compression", "background_review"):

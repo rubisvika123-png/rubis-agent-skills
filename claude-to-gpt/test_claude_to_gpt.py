@@ -317,7 +317,7 @@ def check_self_check():
     import importlib.util, socket, types
     spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"},
-            "compression": {"threshold_tokens": 60000},
+            "compression": {"threshold_tokens": 80000},
             "auxiliary": {"compression": {"model": "gpt-5.6-luna"}, "background_review": {"model": "gpt-5.6-luna"}}}
     assert m.audit_config(good) == [], m.audit_config(good)
     bad = {"platform_toolsets": {"telegram": ["memory", "todo"]}, "model": {"provider": "openai-codex", "base_url": "https://api.groq.com/openai/v1"}}
@@ -427,7 +427,7 @@ def main():
         cfg = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
         assert cfg["model"]["default"] == "gpt-5.6-sol"
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
-        assert cfg["compression"]["threshold_tokens"] == 60000, cfg.get("compression")
+        assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
         for task in ("compression", "background_review"):
             assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
             assert cfg["auxiliary"][task]["model"] == "gpt-5.6-luna", cfg.get("auxiliary")
