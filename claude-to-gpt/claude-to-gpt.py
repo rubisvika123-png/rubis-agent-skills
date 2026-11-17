@@ -605,6 +605,9 @@ def apply(p, profile, home):
     aux = cfg.setdefault("auxiliary", {})
     for task in ("compression", "background_review"):
         aux.setdefault(task, {}).update(provider="openai-codex", model=LIGHT_MODEL)
+    # 17.11 (Лаптев): even on the light model each compression took ~2 min (21 passes a day = ~44 min of
+    # «печатает») because it ran with reasoning on. reasoning_effort none = Hermes' non-reasoning fast lane.
+    aux["compression"]["reasoning_effort"] = "none"
     sk = cfg.setdefault("skills", {})
     sk["creation_nudge_interval"] = 15
     sk["external_dirs"] = sorted(set((sk.get("external_dirs") or []) + p["skills"]))
@@ -850,6 +853,8 @@ def audit_config(cfg):
     for task in ("compression", "background_review"):
         if (aux.get(task) or {}).get("model") != LIGHT_MODEL:
             problems.append(f"фоновая задача {task} идёт на основной модели — медленно и тратит лимит")
+    if (aux.get("compression") or {}).get("reasoning_effort") != "none":
+        problems.append("сжатие с раздумьями — каждое сжатие разговора 1–2 минуты, владелец ждёт")
     return problems
 
 

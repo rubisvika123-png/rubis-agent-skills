@@ -318,13 +318,15 @@ def check_self_check():
     spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"},
             "compression": {"threshold_tokens": 80000},
-            "auxiliary": {"compression": {"model": "gpt-5.6-luna"}, "background_review": {"model": "gpt-5.6-luna"}}}
+            "auxiliary": {"compression": {"model": "gpt-5.6-luna", "reasoning_effort": "none"}, "background_review": {"model": "gpt-5.6-luna"}}}
     assert m.audit_config(good) == [], m.audit_config(good)
     bad = {"platform_toolsets": {"telegram": ["memory", "todo"]}, "model": {"provider": "openai-codex", "base_url": "https://api.groq.com/openai/v1"}}
     probs = " ".join(m.audit_config(bad))
     assert "нет команд" in probs and "чужой адрес" in probs and "Allow/Deny" in probs, probs
     # 17.11 (Лаптев): late compression and side calls on the main model burned the owner's ChatGPT limit
     assert "сжимается слишком поздно" in probs and "background_review" in probs and "compression идёт" in probs, probs
+    slow = dict(good, auxiliary={"compression": {"model": "gpt-5.6-luna"}, "background_review": {"model": "gpt-5.6-luna"}})
+    assert any("сжатие с раздумьями" in p for p in m.audit_config(slow)), m.audit_config(slow)
     seen = {}
     def fake(cmd, **kw):
         seen["t"] = cmd[cmd.index("-t") + 1]
@@ -431,6 +433,8 @@ def main():
         for task in ("compression", "background_review"):
             assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
             assert cfg["auxiliary"][task]["model"] == "gpt-5.6-luna", cfg.get("auxiliary")
+        # 17.11 (Лаптев): compression ran with reasoning on — 21 passes × ~2 min a day; «none» = Hermes fast lane
+        assert cfg["auxiliary"]["compression"]["reasoning_effort"] == "none", cfg.get("auxiliary")
         assert os.path.join(agent, ".claude/skills") in cfg["skills"]["external_dirs"]
         assert cfg["stt"]["language"] == "ru" and cfg["stt"]["provider"] == "groq"
         assert cfg["session_reset"]["mode"] == "both" and cfg["display"]["show_commentary"] is False

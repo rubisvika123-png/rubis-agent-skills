@@ -126,6 +126,8 @@ for home in "$H" "$H"/profiles/*; do
       "$HB" "${PA[@]}" config set "auxiliary.$task.provider" openai-codex --force >/dev/null
       "$HB" "${PA[@]}" config set "auxiliary.$task.model" "$LIGHT_MODEL" --force >/dev/null
     done
+    # 17.11 (Лаптев): сжатие с раздумьями шло ~2 мин за раз (21 раз в день). none = быстрая полоса Hermes.
+    "$HB" "${PA[@]}" config set auxiliary.compression.reasoning_effort none --force >/dev/null
   fi
 done
 
