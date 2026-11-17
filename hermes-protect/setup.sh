@@ -65,7 +65,9 @@ if "compression:" not in lines:
         lines.pop()
     lines += ["compression:", "  enabled: true", ""]
 start = lines.index("compression:")
-for key, val in (("threshold", "0.1"), ("threshold_tokens", "100000")):
+# 17.11 (Лаптев, монтажёр): 100k — каждый ответ пересылал ~100k и лимит кончался к полудню; 60k — пересжатие
+# на каждом сообщении. 80k + короткий хвост (8) — как в переносчике claude-to-gpt.
+for key, val in (("threshold", "0.1"), ("threshold_tokens", "80000"), ("protect_last_n", "8")):
     end = next((i for i in range(start + 1, len(lines)) if re.match(r"[A-Za-z_]", lines[i])), len(lines))
     hits = [i for i in range(start + 1, end) if re.match(rf"  {key}:", lines[i])]
     if not hits:
@@ -99,6 +101,19 @@ SETTINGS=(
   "display.busy_input_mode steer"
   "display.busy_steer_ack_enabled false"
 )
+# 17.11 (Лаптев): скрытые служебные вызовы (сжатие разговора и самоанализ после ответа) шли на основной
+# модели — сжатие по 1–3 мин, самоанализ перечитывал весь разговор (~1,1 млн токенов в день на двух агентах).
+# Лёгкая модель той же подписки ChatGPT делает это быстрее и дешевле. Только для агентов на ChatGPT.
+LIGHT_MODEL="gpt-5.6-luna"
+on_chatgpt() { python3 - "$1/config.yaml" <<'PY'
+import sys, yaml
+try:
+    c = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
+except Exception:
+    sys.exit(1)
+sys.exit(0 if ((c.get("model") or {}).get("provider") == "openai-codex") else 1)
+PY
+}
 for home in "$H" "$H"/profiles/*; do
   [ -f "$home/config.yaml" ] || continue
   mapfile -t PA < <(profile_args "$home")
@@ -106,6 +121,12 @@ for home in "$H" "$H"/profiles/*; do
     # shellcheck disable=SC2086
     "$HB" "${PA[@]}" config set $kv --force >/dev/null
   done
+  if on_chatgpt "$home"; then
+    for task in compression background_review; do
+      "$HB" "${PA[@]}" config set "auxiliary.$task.provider" openai-codex --force >/dev/null
+      "$HB" "${PA[@]}" config set "auxiliary.$task.model" "$LIGHT_MODEL" --force >/dev/null
+    done
+  fi
 done
 
 # 4. Проверка перед «готово»: хук verify-gate.py во всех профилях + правило в характере
