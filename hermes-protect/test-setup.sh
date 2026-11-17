@@ -24,6 +24,8 @@ grep -q "verify-gate.py" "$T/h/profiles/second/config.yaml" || fail "gate not ad
 grep -q "Проверка перед «готово»" "$T/h/SOUL.md" || fail "rule not in SOUL"
 grep -q "Спросить другого агента = передать и ждать" "$T/h/SOUL.md" && grep -q "Заметки — коротко и по местам" "$T/h/SOUL.md" || fail "GPT rules (13.11) not in SOUL"
 grep -q "## Цифры владельца — сразу в файл" "$T/h/SOUL.md" || fail "owner-numbers rule not in SOUL"
+# 17.11 (Лаптев): скрин без подписи — Hermes подставляет «What do you see in this image?», GPT описывал картинку по-английски
+grep -q "## Фото без текста" "$T/h/SOUL.md" && grep -q "What do you see in this image" "$T/h/SOUL.md" || fail "photo rule not in SOUL"
 [ "$(grep -c "Спросить другого агента = передать и ждать" "$T/h/SOUL.md")" = 1 ] || fail "GPT rules duplicated"
 grep -q "## Длина ответа владельцу" "$T/h/SOUL.md" || fail "length rule not in SOUL"
 [ -f "$T/h/plugins/media-check/__init__.py" ] && [ -f "$T/h/profiles/second/plugins/media-check/plugin.yaml" ] || fail "media-check not installed"
