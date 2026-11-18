@@ -6,7 +6,7 @@ Same recipe we ran on ourselves on 29.10 (техспец, Лиза, монтаж
   SOUL.md  = CLAUDE.md (+ USER.md, rules.md) + «довожу до конца» + «долгая память» + memory index
   .env     = the agent's own bot token + allowlist, so the client keeps talking to the same bot
   recipes  = skill task-recipes: the agent writes one explicit recipe per typical task (GPT is literal, 09.11)
-  config   = gpt-5.6-sol, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
+  config   = gpt-6.2-sol, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
 
 Run it as the agent's OS user on the agent's own server, after Hermes is installed.
 Dry run by default (prints the plan); --apply writes the profile. It never starts the
@@ -582,7 +582,7 @@ def apply(p, profile, home):
     cfg_path = os.path.join(pdir, "config.yaml")
     cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) if os.path.isfile(cfg_path) else {}
     cfg = cfg or {}
-    cfg.setdefault("model", {}).update(provider="openai-codex", default="gpt-5.6-sol")
+    cfg.setdefault("model", {}).update(provider="openai-codex", default="gpt-6.2-sol")
     # 16.11 (Лаптев): a cloned config kept the backup agent's Groq address; side calls (the approval check) went there
     for k in ("base_url", "api_key", "api_mode"):
         cfg["model"].pop(k, None)
@@ -608,6 +608,9 @@ def apply(p, profile, home):
     # 17.11 (Лаптев): even on the light model each compression took ~2 min (21 passes a day = ~44 min of
     # «печатает») because it ran with reasoning on. reasoning_effort none = Hermes' non-reasoning fast lane.
     aux["compression"]["reasoning_effort"] = "none"
+    # 18.11 (Лаптев): the smart-approval judge ran on the main model; gpt-6.2-sol rejects reasoning «none»,
+    # so every check cost a failed call + retry. The light model answers APPROVE/DENY fast and cheap.
+    aux.setdefault("approval", {}).update(provider="openai-codex", model=LIGHT_MODEL, reasoning_effort="none")
     sk = cfg.setdefault("skills", {})
     sk["creation_nudge_interval"] = 15
     sk["external_dirs"] = sorted(set((sk.get("external_dirs") or []) + p["skills"]))
