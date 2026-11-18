@@ -427,7 +427,8 @@ def main():
         assert "GROQ_API_KEY=gsk_fake" in env
         assert stat.S_IMODE(os.stat(os.path.join(pdir, ".env")).st_mode) == 0o600
         cfg = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
-        assert cfg["model"]["default"] == "gpt-5.6-sol"
+        assert cfg["model"]["default"] == "gpt-6.2-sol"
+        assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
         assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
         for task in ("compression", "background_review"):
