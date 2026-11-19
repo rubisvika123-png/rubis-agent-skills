@@ -345,7 +345,48 @@ def strip_claude_only(text, owner_zone=None):
     return "\n".join(out)
 
 
-def build_soul(agent_dir, memory_dirs, profile=None):
+HISTORY_SKIP = SKIP_DIRS | {"core", "scripts", "memory", "materials", "logs", "tmp", "venv", ".venv", "state"}
+
+
+def history_block(agent_dir, home):
+    """19.11 (Ольга Мирай: «прежний понимал с полуслова, этот не такой»): the Claude agent kept weeks of live
+    conversation; the GPT agent starts blank, and the owner's ongoing work (a claim against a developer in
+    state/ddu-gorny/) was nowhere in its memory. Point it at its own Claude transcripts and work folders."""
+    enc = re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(agent_dir))
+    talks = []
+    for d in sorted(glob.glob(os.path.join(home, ".claude/projects", enc + "*"))):
+        rest = os.path.basename(d)[len(enc):]
+        if rest in ("", "-dashi-plugin-claude-code-plugin") and glob.glob(os.path.join(d, "*.jsonl")):
+            talks.append(os.path.join(d, "*.jsonl"))
+    folders = []
+    for base in (os.path.join(agent_dir, "state"), agent_dir):
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            path = os.path.join(base, name)
+            if name.startswith(".") or name in HISTORY_SKIP or not os.path.isdir(path):
+                continue
+            files = sum(len(f) for _, _, f in os.walk(path))
+            if files:
+                folders.append((os.path.getmtime(path), path, files))
+    folders = sorted(folders, reverse=True)[:15]
+    if not talks and not folders:
+        return ""
+    lines = ["## Моя работа до переезда на GPT (не начинаю с чистого листа)",
+             "До переезда я работал на Claude и помнил всю живую переписку с владельцем. Здесь это осталось:"]
+    if talks:
+        lines.append("- Мои прежние переписки с владельцем: " + ", ".join(talks) +
+                     ". Когда владелец ссылается на прошлое («как мы делали», «помнишь», «то дело»), сначала ищу там "
+                     "grep по ключевому слову и читаю найденное, а не переспрашиваю.")
+    if folders:
+        lines.append("- Рабочие папки текущих дел (свежие сверху, в скобках — сколько файлов): " +
+                     "; ".join(f"{p} ({n})" for _, p, n in folders) + ". Перед шагом по делу перечитываю его папку.")
+    lines.append("- Владелец даёт задачи коротко, как привык со мной прежним: если данных не хватает — задаю ОДИН "
+                 "уточняющий вопрос и сразу предлагаю свой план, а не жду подробного ТЗ.")
+    return "\n".join(lines)
+
+
+def build_soul(agent_dir, memory_dirs, profile=None, home=None):
     parts = []
     zone = "Asia/Bangkok" if owner_tz(agent_dir, memory_dirs) == 7 else None
     for name in ("CLAUDE.md", "USER.md", "core/USER.md", "rules.md"):  # course starter keeps USER.md in core/
@@ -363,6 +404,9 @@ def build_soul(agent_dir, memory_dirs, profile=None):
                      f"`hermes -p {profile} send -t telegram:<chat_id> \"текст\"` — от моего бота. "
                      f"Файл: `MEDIA:/путь/к/файлу` в тексте.")
     parts.append(GPT_RULES.strip())
+    hist = history_block(agent_dir, home or os.path.expanduser("~"))
+    if hist:
+        parts.append(hist)
     if memory_dirs:
         parts.append(memory_block(memory_dirs))
     return "\n\n".join(parts) + "\n"
@@ -574,7 +618,7 @@ def plan(agent_dir, profile, home):
     return {
         "agent_dir": agent_dir,
         "profile_dir": os.path.join(home, ".hermes/profiles", profile),
-        "soul": build_soul(agent_dir, mem, profile),
+        "soul": build_soul(agent_dir, mem, profile, home),
         "memory_dirs": mem,
         "facts": find_fact_files(agent_dir, home),
         "tz": owner_tz(agent_dir, mem),

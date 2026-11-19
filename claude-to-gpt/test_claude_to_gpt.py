@@ -237,6 +237,27 @@ def check_owner_tz_from_memory():
         assert m.owner_tz(agent, [mem]) == 7
         soul = m.build_soul(agent, [mem])
         assert "--timezone Asia/Bangkok" in soul and "Europe/Moscow" not in soul, soul[:1500]
+    # 19.11 (Ольга Мирай): the GPT agent must know its old Claude talks and the owner's ongoing work folders
+    with tempfile.TemporaryDirectory() as home:
+        agent = os.path.join(home, "ai-tech"); os.makedirs(os.path.join(agent, "state/ddu-gorny"))
+        os.makedirs(os.path.join(agent, "core")); os.makedirs(os.path.join(agent, "node_modules/x"))
+        open(os.path.join(agent, "CLAUDE.md"), "w").write("# Техспец\n")
+        open(os.path.join(agent, "state/ddu-gorny/01-pismo.txt"), "w").write("x")
+        open(os.path.join(agent, "core/notes.md"), "w").write("x")
+        open(os.path.join(agent, "node_modules/x/a.js"), "w").write("x")
+        enc = re.sub(r"[^A-Za-z0-9]", "-", agent)
+        for suffix in ("-dashi-plugin-claude-code-plugin", "-outbox"):
+            d = os.path.join(home, ".claude/projects", enc + suffix); os.makedirs(d)
+            open(os.path.join(d, "s.jsonl"), "w").write("{}")
+        soul = m.build_soul(agent, [], "tech", home)
+        assert "Моя работа до переезда на GPT" in soul, soul[-800:]
+        assert enc + "-dashi-plugin-claude-code-plugin/*.jsonl" in soul and "-outbox" not in soul
+        assert os.path.join(agent, "state/ddu-gorny") + " (1)" in soul
+        assert "node_modules" not in soul.split("Моя работа до переезда")[1] and "/core " not in soul
+        assert "ОДИН уточняющий вопрос" in soul
+        empty = os.path.join(home, "ai-empty"); os.makedirs(empty)
+        open(os.path.join(empty, "CLAUDE.md"), "w").write("# Пусто\n")
+        assert "Моя работа до переезда" not in m.build_soul(empty, [], "e", home)
 
 
 def check_history_and_recipes():
