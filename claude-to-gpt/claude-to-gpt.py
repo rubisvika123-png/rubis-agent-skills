@@ -975,6 +975,13 @@ description: Рецепты всех типовых задач этого аге
 Открой RECIPES.md, найди рецепт по словам владельца и иди по нему по шагам. Рецепта нет — сделай задачу,
 а потом допиши рецепт по шаблону ниже.
 
+## Как дописать или поправить рецепт (владелец: «запомни и допиши в рецепт»)
+Файл: {recipes}. Пиши его ОБЫЧНЫМ инструментом записи файлов (прочитать файл → дописать раздел / заменить
+строки → сохранить) по этому полному пути. НЕ через skill_manage: он пишет только в папки
+assets/references/scripts/templates и на RECIPES.md отвечает ошибкой «File must be under one of…» —
+тогда рецепт молча не сохраняется (19.11, Ольга Мирай: монтажёр 6 раз «записал» рецепт и не сохранил ни разу).
+После записи перечитай файл и убедись, что новый раздел там есть, и только потом скажи владельцу «записал».
+
 ## Если RECIPES.md ещё нет — собери его (переносчик запускает это сам при переносе)
 ГЛАВНЫЙ источник — {history}: реальная работа этого агента на Claude. Что владелец просил, какие файлы,
 скрипты и команды агент использовал, что ответил и что владелец сказал следом (принял или поправил).
@@ -1011,7 +1018,7 @@ def install_recipes_skill(pdir, agent_dir, memory_dirs, history=None):
     sources = ", ".join([os.path.abspath(agent_dir)] + list(memory_dirs))
     history = history or os.path.join(d, "claude-history.md")
     with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
-        f.write(RECIPES_SKILL.format(sources=sources, history=history))
+        f.write(RECIPES_SKILL.format(sources=sources, history=history, recipes=os.path.join(d, "RECIPES.md")))
 
 
 PROTECT_URL = "https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/protect-home.py"

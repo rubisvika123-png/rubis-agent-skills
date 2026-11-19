@@ -300,6 +300,8 @@ def check_history_and_recipes():
         assert out in sk and "дословно" in sk and "те же команды" in sk, sk
         # 15.11 (Vika): students tune the course templates; Claude's own working files must be reused, not rewritten
         assert "своими файлами" in sk and "своё не пиши" in sk, sk
+        # 19.11 (Ольга Мирай): skill_manage refuses RECIPES.md at the skill root — the skill must say to write it as a file
+        assert os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md") in sk and "НЕ через skill_manage" in sk, sk
         # validation of the built RECIPES.md
         rp = os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md")
         assert m.recipes_ok(pdir) == 0
