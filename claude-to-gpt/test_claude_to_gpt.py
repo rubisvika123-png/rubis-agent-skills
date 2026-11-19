@@ -75,6 +75,18 @@ def check_effort():
     assert m.effort_for("/root/agent", "coder") == "high"
     assert m.effort_for("/root/marketing", "marketing") == "high"
     assert m.effort_for("/root/assistant", "tutor") == "medium"
+    assert m.model_for("/root/techspec", "x") == "gpt-5.6-sol"
+    assert m.model_for("/root/agent", "coder") == "gpt-5.6-sol"
+    assert m.model_for("/root/marketing", "marketing") == "gpt-6.2-sol"
+    assert m.model_for("/root/assistant", "tutor") == "gpt-6.2-sol"
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        a = os.path.join(d, "ai-victoriarubis")
+        os.makedirs(a)
+        open(os.path.join(a, "CLAUDE.md"), "w").write("# Никита — кодер / архитектор\n\n## Правила\nмаркетолог пишет посты\n")
+        assert m.model_for(a, "nikita") == "gpt-5.6-sol", "role line in CLAUDE.md"
+        open(os.path.join(a, "CLAUDE.md"), "w").write("# Алина — маркетолог\n\n## Правила\nтехспец чинит сервер\n")
+        assert m.model_for(a, "alina") == "gpt-6.2-sol", "a techspec mention below the title does not count"
 
 
 def check_host_gateway():
@@ -427,7 +439,7 @@ def main():
         assert "GROQ_API_KEY=gsk_fake" in env
         assert stat.S_IMODE(os.stat(os.path.join(pdir, ".env")).st_mode) == 0o600
         cfg = yaml.safe_load(open(os.path.join(pdir, "config.yaml")))
-        assert cfg["model"]["default"] == "gpt-6.2-sol"
+        assert cfg["model"]["default"] == "gpt-5.6-sol"
         assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
         assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
