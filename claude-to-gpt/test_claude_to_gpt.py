@@ -302,6 +302,13 @@ def check_history_and_recipes():
         assert "своими файлами" in sk and "своё не пиши" in sk, sk
         # 19.11 (Ольга Мирай): skill_manage refuses RECIPES.md at the skill root — the skill must say to write it as a file
         assert os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md") in sk and "НЕ через skill_manage" in sk, sk
+        # 19.11 (Ольга Мирай): skills kept in <agent>/skills/ must be registered too; empty dirs are skipped
+        vid = os.path.join(home, "ai-video"); os.makedirs(os.path.join(vid, "skills/reels-montage"))
+        open(os.path.join(vid, "skills/reels-montage/SKILL.md"), "w").write("---\nname: reels-montage\n---\n")
+        os.makedirs(os.path.join(vid, ".claude/skills"))
+        assert m.skill_dirs(vid, os.path.join(home, "nohome")) == [os.path.join(vid, ".claude/skills"), os.path.join(vid, "skills")]
+        os.makedirs(os.path.join(home, "ai-empty/skills"))
+        assert m.skill_dirs(os.path.join(home, "ai-empty"), os.path.join(home, "nohome")) == [], "skills/ without SKILL.md is not a skills dir"
         # validation of the built RECIPES.md
         rp = os.path.join(pdir, "skills/recipes/task-recipes/RECIPES.md")
         assert m.recipes_ok(pdir) == 0
