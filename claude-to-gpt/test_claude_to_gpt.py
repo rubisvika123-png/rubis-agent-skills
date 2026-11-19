@@ -211,6 +211,13 @@ def check_schedules():
         json.dump({"jobs": [{"name": calls[0][calls[0].index("--name") + 1]}]}, open(os.path.join(pdir, "cron/jobs.json"), "w"))
         calls.clear()
         assert m.create_schedules("marketing", pdir, found, "UTC", run=lambda cmd, **kw: calls.append(cmd)) == 2
+        # 19.11: a job more often than every 2 h runs on the light model, a daily one on the main model
+        calls.clear()
+        m.create_schedules("x", os.path.join(root, "none"), [("12 8-23 * * *", "тихая проверка"), ("0 9 * * *", "утро")],
+                           "UTC", run=lambda cmd, **kw: calls.append(cmd))
+        assert calls[0][-4:] == ["--model", m.LIGHT_MODEL, "--provider", "openai-codex"], calls[0]
+        assert "--model" not in calls[1], calls[1]
+        assert m.runs_per_day("12 8-23 * * *") == 16 and m.runs_per_day("12 9-21/3 * * *") == 5
 
 
 def check_owner_tz_from_memory():
@@ -443,6 +450,7 @@ def main():
         assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
         assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
+        assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")
         for task in ("compression", "background_review"):
             assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
             assert cfg["auxiliary"][task]["model"] == "gpt-5.6-luna", cfg.get("auxiliary")

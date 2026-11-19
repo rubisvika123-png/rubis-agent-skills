@@ -475,6 +475,33 @@ def server_tz():
         return real.split("zoneinfo/", 1)[1] if "zoneinfo/" in real else "UTC"
 
 
+def runs_per_day(expr):
+    """Rough number of daily runs of a 5-field cron expression (None if unknown)."""
+    f = expr.split()
+    if len(f) != 5:
+        return None
+
+    def count(field, lo, hi):
+        n = 0
+        for part in field.split(","):
+            step = 1
+            if "/" in part:
+                part, st = part.split("/", 1)
+                step = int(st)
+            if part == "*":
+                a, b = lo, hi
+            elif "-" in part:
+                a, b = map(int, part.split("-", 1))
+            else:
+                a = b = int(part)
+            n += len(range(a, b + 1, step))
+        return n
+    try:
+        return count(f[0], 0, 59) * count(f[1], 0, 23)
+    except ValueError:
+        return None
+
+
 def create_schedules(profile, pdir, schedules, tz, run=subprocess.run):
     """Each Claude wake-up becomes a Hermes cron job with the same time and task text (server's zone:
     the old crontab ran on server time). Named, so a re-run of the converter does not duplicate them."""
@@ -489,8 +516,13 @@ def create_schedules(profile, pdir, schedules, tz, run=subprocess.run):
         name = f"с Claude: {sched} {text[:40]}"
         if name in have:
             continue
-        run(["hermes", "-p", profile, "cron", "create", sched, text, "--name", name,
-             "--deliver", "telegram", "--timezone", tz], capture_output=True, text=True)
+        cmd = ["hermes", "-p", profile, "cron", "create", sched, text, "--name", name,
+               "--deliver", "telegram", "--timezone", tz]
+        # 19.11 (Лаптев): an hourly «тихая проверка» on the main model = 16 full runs a day of the owner's
+        # limit. Anything more often than every 2 hours runs on the light model.
+        if (runs_per_day(sched) or 0) > 12:
+            cmd += ["--model", LIGHT_MODEL, "--provider", "openai-codex"]
+        run(cmd, capture_output=True, text=True)
         made += 1
     return made
 
@@ -599,6 +631,10 @@ def apply(p, profile, home):
     # 17.11 (Лаптев): at 100k every reply re-sent ~100k tokens and the owner's ChatGPT limit ran out before noon.
     # A lower cap keeps each request lighter; Hermes floors the % at 75 on <512K windows, so the cap must be absolute.
     cfg.setdefault("compression", {}).update(threshold=0.1, threshold_tokens=80000, protect_last_n=8)
+    # 19.11 (Лаптев): right after a compression joe was back at ~80k with 7-19 messages — old file reads and
+    # command outputs ride in the history and are re-sent every turn, so the slow summary (1-3 min) fired again
+    # within minutes. Hermes' own no-LLM prune cuts old tool output at 48k, instantly, before that.
+    cfg["compression"]["proactive_prune_tokens"] = 48000
     # 17.11 (монтажёр): at 60k the fixed part alone (character + tools + a skill) was ~60k, so every message
     # re-compressed 1-2 times (1-1.5 min each). 80k + a shorter kept tail leaves room after compression.
     # 17.11 (Лаптев): the hidden side calls ran on the main model — compression took 1-3 min per pass (the owner
