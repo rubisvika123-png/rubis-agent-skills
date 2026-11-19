@@ -451,6 +451,7 @@ def main():
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
         assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
         assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")
+        assert cfg["file_read_max_chars"] == 20000 and cfg["tool_output"]["max_bytes"] == 12000, cfg.get("tool_output")
         for task in ("compression", "background_review"):
             assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
             assert cfg["auxiliary"][task]["model"] == "gpt-5.6-luna", cfg.get("auxiliary")
