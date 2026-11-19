@@ -608,8 +608,11 @@ def migrate_reminders(agent_dir, profile, pdir, run=subprocess.run):
 
 
 def skill_dirs(agent_dir, home):
-    cands = [os.path.join(agent_dir, ".claude/skills"), os.path.join(home, ".claude/skills")]
-    return [d for d in cands if os.path.isdir(d)]
+    # 19.11 (Ольга Мирай): the montage agent kept its skills in /root/ai-video/skills/ (course layout for some
+    # students), not .claude/skills — Hermes never registered reels-montage, and a simple reel took 20 edits.
+    own = os.path.join(agent_dir, "skills")
+    cands = [os.path.join(agent_dir, ".claude/skills"), own, os.path.join(home, ".claude/skills")]
+    return [d for d in cands if os.path.isdir(d) and (d != own or glob.glob(os.path.join(d, "*", "SKILL.md")))]
 
 
 def plan(agent_dir, profile, home):
