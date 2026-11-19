@@ -635,6 +635,11 @@ def apply(p, profile, home):
     # command outputs ride in the history and are re-sent every turn, so the slow summary (1-3 min) fired again
     # within minutes. Hermes' own no-LLM prune cuts old tool output at 48k, instantly, before that.
     cfg["compression"]["proactive_prune_tokens"] = 48000
+    # 19.11 (Лаптев, after the prune): joe still compressed every 2-5 min — 10 new messages added ~76k tokens.
+    # Whole-file reads (default 100k chars) and 50k-char command outputs refill the window at once; cap them,
+    # the agent pages through big files with offset/limit.
+    cfg["file_read_max_chars"] = 20000
+    cfg.setdefault("tool_output", {}).update(max_bytes=12000, max_lines=400)
     # 17.11 (монтажёр): at 60k the fixed part alone (character + tools + a skill) was ~60k, so every message
     # re-compressed 1-2 times (1-1.5 min each). 80k + a shorter kept tail leaves room after compression.
     # 17.11 (Лаптев): the hidden side calls ran on the main model — compression took 1-3 min per pass (the owner
