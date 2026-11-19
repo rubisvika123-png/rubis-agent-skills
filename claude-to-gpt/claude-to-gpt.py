@@ -6,7 +6,7 @@ Same recipe we ran on ourselves on 29.10 (техспец, Лиза, монтаж
   SOUL.md  = CLAUDE.md (+ USER.md, rules.md) + «довожу до конца» + «долгая память» + memory index
   .env     = the agent's own bot token + allowlist, so the client keeps talking to the same bot
   recipes  = skill task-recipes: the agent writes one explicit recipe per typical task (GPT is literal, 09.11)
-  config   = gpt-6.2-sol, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
+  config   = gpt-5.6-sol for the techspec, gpt-6.2-sol for the rest, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
 
 Run it as the agent's OS user on the agent's own server, after Hermes is installed.
 Dry run by default (prints the plan); --apply writes the profile. It never starts the
@@ -20,6 +20,8 @@ import argparse, hashlib, urllib.request, glob, json, os, re, shutil, subprocess
 
 import yaml
 
+TECH_MODEL = "gpt-5.6-sol"  # 19.11 (Вика): techspec only — on our test it matched 6.2-sol, faster, fewer tokens
+MAIN_MODEL = "gpt-6.2-sol"  # everyone else (marketer got smarter on 6.2, Ольга Мирай 18.11)
 LIGHT_MODEL = "gpt-5.6-luna"  # same ChatGPT subscription, cheaper/faster tier for side calls
 
 MEM_BEGIN, MEM_END = "<!-- MEMORY-INDEX:BEGIN -->", "<!-- MEMORY-INDEX:END -->"
@@ -582,7 +584,7 @@ def apply(p, profile, home):
     cfg_path = os.path.join(pdir, "config.yaml")
     cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) if os.path.isfile(cfg_path) else {}
     cfg = cfg or {}
-    cfg.setdefault("model", {}).update(provider="openai-codex", default="gpt-6.2-sol")
+    cfg.setdefault("model", {}).update(provider="openai-codex", default=model_for(p["agent_dir"], profile))
     # 16.11 (Лаптев): a cloned config kept the backup agent's Groq address; side calls (the approval check) went there
     for k in ("base_url", "api_key", "api_mode"):
         cfg["model"].pop(k, None)
@@ -969,6 +971,21 @@ def install_verify_gate(home):
 
 PLUGIN_URL = "https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/"
 TECH = re.compile(r"tech|spec|coder|dev|market|техспец|кодер|маркет", re.I)  # deep thinking: tech + marketer (Vika 05.11)
+
+
+TECH_ONLY = re.compile(r"tech|spec|coder|dev|техспец|кодер", re.I)
+
+
+def model_for(agent_dir, profile):
+    """Techspec on gpt-5.6-sol, everyone else on gpt-6.2-sol (Vika 19.11). Students' folders and profiles are
+    often personal names (ai-victoriarubis, nikita), so the role line at the top of CLAUDE.md counts too."""
+    name = os.path.basename(os.path.normpath(agent_dir)) + " " + profile
+    try:
+        with open(os.path.join(agent_dir, "CLAUDE.md"), encoding="utf-8", errors="ignore") as f:
+            name += " " + f.read(300).split("\n## ", 1)[0]
+    except OSError:
+        pass
+    return TECH_MODEL if TECH_ONLY.search(name) else MAIN_MODEL
 
 
 def effort_for(agent_dir, profile):
