@@ -477,6 +477,9 @@ def main():
         soul = open(os.path.join(pdir, "SOUL.md")).read()
         assert soul.startswith("# Техспец Тест"), soul[:80]
         assert "Как я довожу работу до конца" in soul
+        # 20.11: the photo rule lived only in a hand-patched SOUL and was lost on re-run; long tasks show progress
+        assert "## Фото без текста" in soul and "What do you see in this image?" in soul
+        assert "## Долгая задача — владелец видит ход" in soul
         assert "без эмодзи" in soul and "шум" not in soul, "only the agent's own memory"
         env = open(os.path.join(pdir, ".env")).read()
         assert "TELEGRAM_BOT_TOKEN=111:FAKE" in env
@@ -489,6 +492,7 @@ def main():
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
         assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8 and cfg["compression"]["threshold"] == 0.5, cfg.get("compression")
         assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")
+        assert cfg["compression"]["codex_gpt55_autoraise"] is False, cfg.get("compression")
         assert cfg["file_read_max_chars"] == 20000 and cfg["tool_output"]["max_bytes"] == 12000, cfg.get("tool_output")
         for task in ("compression", "background_review"):
             assert cfg["auxiliary"][task]["provider"] == "openai-codex", cfg.get("auxiliary")
