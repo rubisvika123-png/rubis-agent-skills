@@ -480,6 +480,9 @@ def main():
         # 20.11: the photo rule lived only in a hand-patched SOUL and was lost on re-run; long tasks show progress
         assert "## Фото без текста" in soul and "What do you see in this image?" in soul
         assert "## Долгая задача — владелец видит ход" in soul
+        # 20.11: full course-chat review — short owner questions, voice = raw material, no yes-man strategist
+        for h in ("## Короткий вопрос владельца — понимаю по смыслу", "## Голосовое владельца — сырьё, а не диктовка", "## Думаю сам, а не поддакиваю"):
+            assert h in soul, h
         assert "без эмодзи" in soul and "шум" not in soul, "only the agent's own memory"
         env = open(os.path.join(pdir, ".env")).read()
         assert "TELEGRAM_BOT_TOKEN=111:FAKE" in env
