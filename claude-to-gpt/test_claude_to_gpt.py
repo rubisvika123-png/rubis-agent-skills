@@ -483,6 +483,7 @@ def main():
         # 20.11: full course-chat review — short owner questions, voice = raw material, no yes-man strategist
         for h in ("## Короткий вопрос владельца — понимаю по смыслу", "## Голосовое владельца — сырьё, а не диктовка", "## Думаю сам, а не поддакиваю"):
             assert h in soul, h
+        assert "владелец — хозяин своих доступов" in soul and "везде у него какие-то запреты" in soul
         assert "без эмодзи" in soul and "шум" not in soul, "only the agent's own memory"
         env = open(os.path.join(pdir, ".env")).read()
         assert "TELEGRAM_BOT_TOKEN=111:FAKE" in env
