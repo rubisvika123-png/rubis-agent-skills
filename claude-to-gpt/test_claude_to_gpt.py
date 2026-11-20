@@ -374,7 +374,7 @@ def check_self_check():
     import importlib.util, socket, types
     spec = importlib.util.spec_from_file_location("c2g", SCRIPT); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     good = {"platform_toolsets": {"telegram": ["hermes-telegram"]}, "model": {"provider": "openai-codex"}, "approvals": {"mode": "smart"},
-            "compression": {"threshold_tokens": 80000},
+            "compression": {"threshold_tokens": 120000},
             "auxiliary": {"compression": {"model": "gpt-5.6-luna", "reasoning_effort": "none"}, "background_review": {"model": "gpt-5.6-luna"}}}
     assert m.audit_config(good) == [], m.audit_config(good)
     bad = {"platform_toolsets": {"telegram": ["memory", "todo"]}, "model": {"provider": "openai-codex", "base_url": "https://api.groq.com/openai/v1"}}
@@ -490,7 +490,7 @@ def main():
         assert cfg["model"]["default"] == "gpt-5.6-sol"
         assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
-        assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8 and cfg["compression"]["threshold"] == 0.5, cfg.get("compression")
+        assert cfg["compression"]["threshold_tokens"] == 120000 and cfg["compression"]["protect_last_n"] == 8 and cfg["compression"]["threshold"] == 0.5, cfg.get("compression")
         assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")
         assert cfg["compression"]["codex_gpt55_autoraise"] is False, cfg.get("compression")
         assert cfg["file_read_max_chars"] == 20000 and cfg["tool_output"]["max_bytes"] == 12000, cfg.get("tool_output")

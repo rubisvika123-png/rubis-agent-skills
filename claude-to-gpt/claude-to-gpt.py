@@ -6,7 +6,7 @@ Same recipe we ran on ourselves on 29.10 (техспец, Лиза, монтаж
   SOUL.md  = CLAUDE.md (+ USER.md, rules.md) + «довожу до конца» + «долгая память» + memory index
   .env     = the agent's own bot token + allowlist, so the client keeps talking to the same bot
   recipes  = skill task-recipes: the agent writes one explicit recipe per typical task (GPT is literal, 09.11)
-  config   = gpt-5.6-sol for the techspec, gpt-6.2-sol for the rest, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 80k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
+  config   = gpt-5.6-sol for the techspec, gpt-6.2-sol for the rest, reasoning high (tech, marketer) / medium (others), 150 turns, compression cap 120k (tail 8), side calls (compression, self-review) on gpt-5.6-luna, steer, the agent's skills dirs
 
 Run it as the agent's OS user on the agent's own server, after Hermes is installed.
 Dry run by default (prints the plan); --apply writes the profile. It never starts the
@@ -23,6 +23,10 @@ import yaml
 TECH_MODEL = "gpt-5.6-sol"  # 19.11 (Вика): techspec only — on our test it matched 6.2-sol, faster, fewer tokens
 MAIN_MODEL = "gpt-6.2-sol"  # everyone else (marketer got smarter on 6.2, Ольга Мирай 18.11)
 LIGHT_MODEL = "gpt-5.6-luna"  # same ChatGPT subscription, cheaper/faster tier for side calls
+# 20.11 (Лаптев): rules + tools + memory leave ~45-63k after every compression; an 80k cap gave only
+# 20-30k of room, so joe compressed 99 times a day (72 of them over a minute). 120k of the 272k window,
+# with ~99% of the prompt cached, costs little limit and cuts the passes several times.
+COMPRESS_AT = 120000
 
 MEM_BEGIN, MEM_END = "<!-- MEMORY-INDEX:BEGIN -->", "<!-- MEMORY-INDEX:END -->"
 
@@ -690,7 +694,7 @@ def apply(p, profile, home):
     cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(p["agent_dir"], profile), max_turns=150)
     # 17.11 (Лаптев): at 100k every reply re-sent ~100k tokens and the owner's ChatGPT limit ran out before noon.
     # A lower cap keeps each request lighter; Hermes floors the % at 75 on <512K windows, so the cap must be absolute.
-    cfg.setdefault("compression", {}).update(threshold=0.5, threshold_tokens=80000, protect_last_n=8)
+    cfg.setdefault("compression", {}).update(threshold=0.5, threshold_tokens=COMPRESS_AT, protect_last_n=8)
     # 20.11 (Лаптев): with threshold 0.1 joe compressed every 2-3 min and each 2-min pass freed only ~5k tokens;
     # at 0.5 (the absolute 80k cap still applies) it fell to ~5/hour, each freeing 25-50k.
     # 19.11 (Лаптев): right after a compression joe was back at ~80k with 7-19 messages — old file reads and
@@ -957,7 +961,7 @@ def audit_config(cfg):
     if (cfg.get("approvals") or {}).get("mode") != "smart":
         problems.append("подтверждения команд не умные — владельцу будут приходить окна Allow/Deny на каждую проверку")
     thr = (cfg.get("compression") or {}).get("threshold_tokens") or 0
-    if not thr or thr > 80000:
+    if not thr or thr > COMPRESS_AT:
         problems.append(f"разговор сжимается слишком поздно ({thr or 'по умолчанию'}) — каждый ответ тратит много лимита")
     aux = cfg.get("auxiliary") or {}
     for task in ("compression", "background_review"):
