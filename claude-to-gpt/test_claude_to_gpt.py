@@ -258,6 +258,14 @@ def check_owner_tz_from_memory():
         empty = os.path.join(home, "ai-empty"); os.makedirs(empty)
         open(os.path.join(empty, "CLAUDE.md"), "w").write("# Пусто\n")
         assert "Моя работа до переезда" not in m.build_soul(empty, [], "e", home)
+        # 20.11 (Лаптев): no handoff section in CLAUDE.md -> the kanban rule is still added; skills-only + owner-waiting rules
+        soul_e = m.build_soul(empty, [], "e", home)
+        assert "## Как передать задачу другому агенту" in soul_e and "hermes kanban create" in soul_e, soul_e[-600:]
+        assert "делаю ТОЛЬКО через него" in soul_e and "ждут твоего ответа" in soul_e
+        soul_h = m.build_soul(agent, [], "tech", home)
+        open(os.path.join(agent, "CLAUDE.md"), "w").write("# Техспец\n\n## Как передать задачу другому агенту\nкомнаты\n")
+        soul_h = m.build_soul(agent, [], "tech", home)
+        assert soul_h.count("## Как передать задачу другому агенту") == 1, "handoff section duplicated"
 
 
 def check_history_and_recipes():
@@ -479,7 +487,7 @@ def main():
         assert cfg["model"]["default"] == "gpt-5.6-sol"
         assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150}
-        assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8, cfg.get("compression")
+        assert cfg["compression"]["threshold_tokens"] == 80000 and cfg["compression"]["protect_last_n"] == 8 and cfg["compression"]["threshold"] == 0.5, cfg.get("compression")
         assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")
         assert cfg["file_read_max_chars"] == 20000 and cfg["tool_output"]["max_bytes"] == 12000, cfg.get("tool_output")
         for task in ("compression", "background_review"):

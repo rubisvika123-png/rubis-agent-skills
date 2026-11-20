@@ -43,7 +43,7 @@ GPT_RULES = """## Что важнее, если правила спорят (п�
 Довожу задачу до результата сам, не задаю вопросов, на которые могу ответить проверкой.
 Перед задачей из 3+ шагов — короткий план. «Готово» — только после проверки фактом.
 Помощников (delegate_task) зову только для действительно большой задачи из независимых частей: каждый помощник — отдельный расход лимита.
-Подходит готовый навык — делаю по нему; сложную задачу (5+ шагов) сохраняю как свой навык.
+Подходит готовый навык или готовый скрипт (монтаж, публикация, карусели, отчёты) — делаю ТОЛЬКО через него, даже если просьба звучит упрощённо («просто синие плашки»). Свою замену с нуля не пишу; навык не запускается — чиню вызов навыка, а не обхожу его (20.11, Лаптев: самодельный ffmpeg прислал владельцу пустые плашки без субтитров). Сложную задачу (5+ шагов) сохраняю как свой навык.
 Общие навыки из чужих папок не правлю.
 
 ## Как я выполняю просьбы (советы OpenAI для GPT-6)
@@ -56,6 +56,7 @@ GPT_RULES = """## Что важнее, если правила спорят (п�
 Свою прошлую цифру-предложение не повторяю как факт в следующих ответах, пока владелец её не подтвердил.
 Статус называю с датой источника («по доске на 09.11», «в будильнике есть»); доска и файл состояния расходятся — пишу об этом прямо.
 Каждый зависший пункт помечаю: ждёт владельца / ждёт внешних / ждёт агента. В план дня владельца попадает только «ждёт владельца».
+Задачи (в том числе на доске задач), которые ждут ответа владельца, больше суток молча не держу: каждое утро одним сообщением присылаю список «ждут твоего ответа» (20.11, Лаптев: две задачи двое суток стояли без ответа, владелец решил, что агенты «не слышат друг друга»).
 Короткое подтверждение действия дополняю одной фразой, что это задевает (кто готовил, какой платный срок истекает).
 Ссылку оплаты беру из текущих кнопок воронки и перед отправкой открываю её.
 Вопрос про ошибку или поломку — сначала ищу по словам симптома в своей базе разборов (папка course-errors, если она есть); есть карточка — отвечаю по ней, её «чего не делать» не нарушаю.
@@ -404,6 +405,10 @@ def build_soul(agent_dir, memory_dirs, profile=None, home=None):
                      f"`hermes -p {profile} send -t telegram:<chat_id> \"текст\"` — от моего бота. "
                      f"Файл: `MEDIA:/путь/к/файлу` в тексте.")
     parts.append(GPT_RULES.strip())
+    # 20.11 (Лаптев): his CLAUDE.md had no handoff section, so replace_handoff() had nothing to swap and the moved
+    # agents got no task-passing rule at all. Always add it when the source has none.
+    if not any(HANDOFF_HEAD.search(x) for part in parts for x in part.splitlines()):
+        parts.append("## Как передать задачу другому агенту\n\n" + KANBAN_HANDOFF)
     hist = history_block(agent_dir, home or os.path.expanduser("~"))
     if hist:
         parts.append(hist)
@@ -677,7 +682,9 @@ def apply(p, profile, home):
     cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(p["agent_dir"], profile), max_turns=150)
     # 17.11 (Лаптев): at 100k every reply re-sent ~100k tokens and the owner's ChatGPT limit ran out before noon.
     # A lower cap keeps each request lighter; Hermes floors the % at 75 on <512K windows, so the cap must be absolute.
-    cfg.setdefault("compression", {}).update(threshold=0.1, threshold_tokens=80000, protect_last_n=8)
+    cfg.setdefault("compression", {}).update(threshold=0.5, threshold_tokens=80000, protect_last_n=8)
+    # 20.11 (Лаптев): with threshold 0.1 joe compressed every 2-3 min and each 2-min pass freed only ~5k tokens;
+    # at 0.5 (the absolute 80k cap still applies) it fell to ~5/hour, each freeing 25-50k.
     # 19.11 (Лаптев): right after a compression joe was back at ~80k with 7-19 messages — old file reads and
     # command outputs ride in the history and are re-sent every turn, so the slow summary (1-3 min) fired again
     # within minutes. Hermes' own no-LLM prune cuts old tool output at 48k, instantly, before that.
