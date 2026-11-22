@@ -41,10 +41,23 @@ assert ad._busy_session_handler is not orig
 # no gateway / odd adapters never break dispatch
 assert ba.on_dispatch(event=ev, gateway=None) is None
 assert ba.on_dispatch(event=ev, gateway=types.SimpleNamespace(adapters={"x": object()})) is None
+print("OK: busy-ack-ru tests passed")
+
+# 22.11: Hermes' English failure notice reaches the owner in Russian; normal text untouched
+sent.clear()
+asyncio.run(ad.send("42", "Your request was not processed. Send it again if you still want me to carry it out."))
+assert "лимит ChatGPT" in sent[-1][1], sent
+asyncio.run(ad.send("42", "Готово, бот отвечает."))
+assert sent[-1][1] == "Готово, бот отвечает."
+ws = ad.send; ba.on_dispatch(event=ev, gateway=gw); assert ad.send is ws  # no double wrap
+print("OK ru notices")
+
 # 17.11 (Лаптев): one gateway serves several profiles; non-default profiles' adapters live in
 # gateway._profile_adapters[profile][platform], not in gateway.adapters — they were never wrapped
 pa = Adapter(); pa.set_busy_session_handler(orig)
 gw2 = types.SimpleNamespace(adapters={}, _profile_adapters={"joe": {"telegram": pa}})
 ba.on_dispatch(event=ev, gateway=gw2)
 assert pa._busy_session_handler is not orig, "profile adapter not wrapped"
-print("OK: busy-ack-ru tests passed")
+sent.clear(); asyncio.run(pa.send("42", "Your request was not processed. Send it again if you still want me to carry it out."))
+assert "лимит ChatGPT" in sent[-1][1]
+print("OK profile adapters")

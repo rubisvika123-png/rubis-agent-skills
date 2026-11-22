@@ -52,6 +52,12 @@ GPT_RULES = """## Что важнее, если правила спорят (п�
 Подходит готовый навык или готовый скрипт (монтаж, публикация, карусели, отчёты) — делаю ТОЛЬКО через него, даже если просьба звучит упрощённо («просто синие плашки»). Свою замену с нуля не пишу; навык не запускается — чиню вызов навыка, а не обхожу его (20.11, Лаптев: самодельный ffmpeg прислал владельцу пустые плашки без субтитров). Сложную задачу (5+ шагов) сохраняю как свой навык.
 Общие навыки из чужих папок не правлю.
 
+## Попросили сделать — делаю, а не спрашиваю «да?»
+Владелец сказал «напиши», «сделай», «пришли», «собери» — в этом же ответе присылаю готовый результат. Не отвечаю планом с вопросом «дашь да?», «согласуешь?», «делать?» (22.11, проверка на задачах Зюзина: на «напиши пост и пришли» агент на GPT ответил «предлагаю такой вариант, дашь да?», агент на Claude сразу прислал пост; Лаптев: «по 100 раз переспрашивают»).
+- Плохо: «Предлагаю сделать пост про приёмку в таком стиле. Дашь да?»
+- Хорошо: сразу сам пост, а под ним одна строка: «Нужно короче — скажи».
+«Да» спрашиваю только перед необратимым: удалить, заплатить, опубликовать, отправить людям от имени владельца. Текст, план, разбор, черновик, проверка — делаю сразу.
+
 ## Как я выполняю просьбы (советы OpenAI для GPT-6)
 «Можешь сделать…», «хочу, чтобы…» — это просьба сделать, а не вопрос: делаю, а не отвечаю «да, могу».
 Сначала делаю всё, что уже разрешено, и только потом спрашиваю — если без ответа владельца никак.
@@ -126,9 +132,13 @@ GPT чаще говорит «готово», не проверив, — у ме
 - Сообщение «What do you see in this image?» пишет не владелец, а программа, когда он прислал картинку без подписи. Картинка или скрин без подписи — это задача, а не просьба описать картинку. Никогда не пересказываю, что на ней видно, и всегда отвечаю по-русски.
 - По памяти и последним сообщениям понимаю, что он хочет (скрин комментария — ответить на комментарий, скрин ошибки — разобраться и починить), и делаю. Не понимаю — одним коротким вопросом по-русски: «Что сделать с этим скрином?»
 
+## Лимиты ChatGPT — точные цифры одной командой
+«Что с лимитами?», «сколько осталось?» — запускаю `hermes usage` и отвечаю цифрами: сколько осталось от лимита на ближайшие часы и от недельного (в процентах) и когда каждый обновится (по времени владельца). Не отвечаю «система не показывает» — показывает (22.11, Ольга Мирай). Знаки памяти, шаги и навыки в ответ про лимиты не включаю.
+Перед тяжёлой задачей (монтаж, много картинок, большой разбор) при остатке меньше 20% — сначала одной строкой предупреждаю владельца.
+
 ## Долгая задача — владелец видит ход
 - Задача займёт больше 5 минут — до начала одним сообщением: что сделаю (2–4 пункта) и примерно сколько это займёт. Потом сразу делаю, «да» не жду.
-- Работа идёт дольше 15 минут — коротко пишу, на каком я шаге и сколько осталось. Молчать полчаса нельзя: владелец решает, что я завис (17.11, Лаптев: 36 минут «печатает» без единого слова).
+- Между шагами пишу владельцу одну короткую строку по-русски, на каком я шаге («Тексты вставил, проверяю кнопки») — она уходит в чат сразу. Работа идёт дольше 15 минут — пишу, сколько осталось. Молчать полчаса нельзя: владелец решает, что я завис (17.11, Лаптев: 36 минут «печатает» без единого слова).
 
 ## Я работаю на GPT (движок Hermes)
 Раньше я работал на Claude Code, теперь на Hermes. Мой характер — этот файл; навыки — папки из
@@ -142,6 +152,12 @@ skills.external_dirs; подключения — mcp_servers в config.yaml. К�
 ## Заметки — коротко и по местам
 - Файл с цифрами и фактами (например materials/point-a.md) — только цифры и факты. Разборы, аудиты, выводы — отдельным файлом в долгой памяти и строкой в её оглавлении.
 - Ошибочные данные не держу рядом с верными: переношу в отдельный файл-архив с пометкой «не использовать».
+
+## Договорённости по задаче — сразу в файл
+Моя память разговора со временем сжимается в краткий пересказ, и детали из чата теряются. Файл — не теряется (22.11, Ольга Мирай: схему 14 дней обсудили днём, к вечеру агент выдал старое расписание бота за её решение).
+- Владелец описал, как должно быть (схема, дни, тексты, кнопки, ссылки, цены) — в том же ходе дописываю это в файл договорённостей задачи (моя папка, state/dogovorennosti-<задача>.md) и отвечаю «Записал: …» одной строкой.
+- Перед тем как описать схему, подтвердить «как будет работать» или менять работу по задаче — перечитываю этот файл. Чего там нет — не утверждаю, а спрашиваю или предлагаю с пометкой «предлагаю».
+- То, что уже стоит в коде или старых настройках, — не решение владельца. Описывая это, говорю прямо: «сейчас сделано так, ты это не утверждала».
 
 ## Цифры владельца — сразу в файл
 - Любую цифру или факт о бизнесе из сообщения владельца (продажи, число клиентов, участников, цены, сроки) записываю в файл с цифрами в том же ходе, даже если это первое сообщение и вопрос был о другом.
@@ -404,9 +420,15 @@ def history_block(agent_dir, home):
     lines = ["## Моя работа до переезда на GPT (не начинаю с чистого листа)",
              "До переезда я работал на Claude и помнил всю живую переписку с владельцем. Здесь это осталось:"]
     if talks:
-        lines.append("- Мои прежние переписки с владельцем: " + ", ".join(talks) +
-                     ". Когда владелец ссылается на прошлое («как мы делали», «помнишь», «то дело»), сначала ищу там "
-                     "grep по ключевому слову и читаю найденное, а не переспрашиваю.")
+        dialog = os.path.join(os.path.abspath(agent_dir), "state", DIALOG_NAME)
+        if export_claude_dialog(agent_dir, home, dialog):
+            lines.append(f"- Вся моя прежняя переписка с владельцем — одним файлом {dialog} (по датам, старые сверху). "
+                         "Владелец ссылается на прошлое («как мы делали», «ты же сам заходил», «помнишь», «то дело», "
+                         f"«как раньше») — сначала `grep -n -i '<слово>' {dialog}` и читаю найденное место, а не "
+                         "переспрашиваю и не говорю «не знаю». Как я делал раньше — так и делаю, если владелец не сказал иначе.")
+        else:
+            lines.append("- Мои прежние переписки с владельцем: " + ", ".join(talks) +
+                         ". Когда владелец ссылается на прошлое, сначала ищу там grep по ключевому слову.")
     if folders:
         lines.append("- Рабочие папки текущих дел (свежие сверху, в скобках — сколько файлов): " +
                      "; ".join(f"{p} ({n})" for _, p, n in folders) + ". Перед шагом по делу перечитываю его папку.")
@@ -751,9 +773,12 @@ def apply(p, profile, home):
     # Как у команды Виктории: тихий режим, самообновление разговора, защита от самоудаления.
     disp = cfg.setdefault("display", {})
     disp.update(memory_notifications="off", file_mutation_verifier=False, turn_completion_explainer=False,
-                credits_notices=False, busy_ack_enabled=False, interim_assistant_messages=False,
-                long_running_notifications=False, show_commentary=False,
+                credits_notices=False, busy_ack_enabled=False, show_commentary=False,
+                # 22.11 (Ольга, Лаптев: «молчит 30 минут»): with these two off the engine swallowed every
+                # mid-task line, so the rule «пишу, на каком я шаге» could never reach the owner.
+                interim_assistant_messages=True, long_running_notifications=True, language="ru",
                 busy_input_mode="steer", busy_steer_ack_enabled=False)  # mid-task message no longer kills the work
+    cfg.setdefault("agent", {})["gateway_notify_interval"] = 300  # «⏳ Работаю — N мин» every 5 min, edited in place
     cfg.setdefault("telegram", {})["gateway_restart_notification"] = False
     cfg["session_reset"] = {"mode": "both", "at_hour": 4, "idle_minutes": 240, "notify": False}
     hooks = cfg.get("hooks") or {}
@@ -776,6 +801,9 @@ def apply(p, profile, home):
             pl["enabled"] = sorted(set((pl.get("enabled") or []) + [plugin]))
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+    install_limit_warning(profile, pdir, server_tz())
+    # 22.11: a re-run rewrote SOUL.md, but open Telegram conversations kept the old prompt until the night reset
+    subprocess.run(["hermes", "-p", profile, "sessions", "refresh-prompts"], capture_output=True, text=True)
     hist = os.path.join(pdir, "skills/recipes/task-recipes/claude-history.md")
     p["history_tasks"] = export_claude_history(p["agent_dir"], home, hist)
     install_recipes_skill(pdir, p["agent_dir"], p["memory_dirs"], hist)
@@ -789,6 +817,47 @@ def apply(p, profile, home):
         enabled = (yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}).get("plugins", {}).get("enabled") or []
         if name not in enabled:
             print(f"  ВНИМАНИЕ: не поставился плагин {name} — разговор не будет обновляться сам ночью")
+
+
+def _limit_source():
+    """limit_warning.py: /root/coder/hermes/ next to this repo, the skills repo's hermes-protect/, else download —
+    on a student server the converter often runs as a single copied file."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for d in ("hermes", "hermes-protect"):
+        f = os.path.join(root, d, "limit-warning", "limit_warning.py")
+        if os.path.isfile(f):
+            return open(f, encoding="utf-8").read()
+    return urllib.request.urlopen(f"{PLUGIN_URL}limit-warning/limit_warning.py", timeout=20).read().decode("utf-8")
+
+
+def install_limit_warning(profile, pdir, tz, run=subprocess.run):
+    """22.11 (Ольга: «какого ты меня не предупредил про лимиты?»): warn the owner from the bot at <=20% of the
+    5-hour window, at 0%, and at 40/30/20/10% of the week. One account = one warner: profiles on a server share
+    the ChatGPT login, so only the first moved profile gets the job."""
+    profiles = os.path.dirname(pdir)
+    for other in glob.glob(os.path.join(profiles, "*", "scripts", "*limit_warning.py")):
+        if not other.startswith(pdir + os.sep):
+            return False
+    dst = os.path.join(pdir, "scripts", "limit_warning.py")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    try:
+        code = _limit_source().replace("__PDIR__", pdir)
+    except Exception as e:
+        print(f"  ВНИМАНИЕ: предупреждение о лимите не поставил ({e})")
+        return False
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(code)
+    try:
+        jobs = json.load(open(os.path.join(pdir, "cron/jobs.json"), encoding="utf-8"))
+        jobs = jobs.get("jobs", jobs) if isinstance(jobs, dict) else jobs
+        if any(isinstance(j, dict) and j.get("name") == "limit-warning" for j in jobs):
+            return True
+    except (OSError, ValueError):
+        pass
+    run(["hermes", "-p", profile, "cron", "create", "every 15m", "limit-warning", "--name", "limit-warning",
+         "--script", "limit_warning.py", "--no-agent", "--deliver", "telegram", "--timezone", tz],
+        capture_output=True, text=True)
+    return True
 
 
 CHANNEL_MSG = re.compile(r"<channel\b[^>]*>(.*?)</channel>", re.S)
@@ -806,10 +875,8 @@ def _text_of(content):
     return "\n".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
 
 
-def export_claude_history(agent_dir, home, out_path, max_tasks=150, max_bytes=250000):
-    """15.11 (Vika): the real work of the Claude agent, as the source for fresh recipes — what the owner
-    asked, which files/commands/skills Claude used, what it answered, and the owner's next word (accepted
-    or corrected). Newest first, secrets redacted. Returns the number of owner messages exported."""
+def _claude_episodes(agent_dir, home):
+    """Every owner request / scheduled task of the Claude agent with what it did and what it answered."""
     enc = re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(agent_dir))
     files = []
     for d in glob.glob(os.path.join(home, ".claude/projects", enc + "*")):
@@ -854,6 +921,40 @@ def export_claude_history(agent_dir, home, out_path, max_tasks=150, max_bytes=25
                         cur["did"].append(f"навык {inp.get('skill', '')}")
                     elif name.startswith("mcp__"):
                         cur["did"].append("подключение " + name.split("__", 2)[-1])
+    return episodes
+
+
+DIALOG_NAME = "claude-dialog.md"
+
+
+def export_claude_dialog(agent_dir, home, out_path):
+    """22.11 (Лаптев: «ты сам заходил на Тильду», «ты сам создал этот чат»): the GPT agent was pointed at 1.2 GB
+    of raw Claude transcripts — grep there drowns in tool output, so it never found its own past. One clean,
+    dated, oldest-first text of the whole owner↔agent conversation, searchable with one grep."""
+    episodes = sorted(_claude_episodes(agent_dir, home), key=lambda e: e["ts"])
+    if not episodes:
+        return 0
+    out = ["# Вся моя переписка с владельцем до переезда на GPT (старые сверху)\n",
+           "Ищу здесь grep -n по ключевому слову (сервис, имя, «тильда», «чат», «расписание») и читаю найденное место.\n"]
+    for e in episodes:
+        block = [f"\n## {e['ts'][:16].replace('T', ' ')}", f"{e['who']}: " + re.sub(r"(?m)^#+ ", "", e["ask"][:3000])]
+        did = [x.split("\n")[0][:160] for x in dict.fromkeys(e["did"]) if x.strip()]
+        if did:
+            block.append("Сделал: " + "; ".join(did[:6]) + (f"; …ещё {len(did) - 6}" if len(did) > 6 else ""))
+        if e["said"]:
+            block.append("Ответил: " + "\n".join(e["said"])[:3000])
+        out.append(_redact("\n".join(block)) + "\n")
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(out))
+    return len(episodes)
+
+
+def export_claude_history(agent_dir, home, out_path, max_tasks=150, max_bytes=250000):
+    """15.11 (Vika): the real work of the Claude agent, as the source for fresh recipes — what the owner
+    asked, which files/commands/skills Claude used, what it answered, and the owner's next word (accepted
+    or corrected). Newest first, secrets redacted. Returns the number of owner messages exported."""
+    episodes = _claude_episodes(agent_dir, home)
     episodes.sort(key=lambda e: e["ts"], reverse=True)
     # the same scheduled task repeats every day — one (the newest) example is enough;
     # the owner's own requests go first, then one example of each recurring task
@@ -1108,21 +1209,27 @@ TECH = re.compile(r"tech|spec|coder|dev|market|техспец|кодер|мар�
 TECH_ONLY = re.compile(r"tech|spec|coder|dev|техспец|кодер", re.I)
 
 
-def model_for(agent_dir, profile):
-    """Techspec on gpt-5.6-sol, everyone else on gpt-6.2-sol (Vika 19.11). Students' folders and profiles are
-    often personal names (ai-victoriarubis, nikita), so the role line at the top of CLAUDE.md counts too."""
+def _role_name(agent_dir, profile):
+    """Students' folders and profiles are often personal names (ai-victoriarubis, nikita), so the role line at
+    the top of CLAUDE.md counts too."""
     name = os.path.basename(os.path.normpath(agent_dir)) + " " + profile
     try:
         with open(os.path.join(agent_dir, "CLAUDE.md"), encoding="utf-8", errors="ignore") as f:
             name += " " + f.read(300).split("\n## ", 1)[0]
     except OSError:
         pass
-    return TECH_MODEL if TECH_ONLY.search(name) else MAIN_MODEL
+    return name
+
+
+def model_for(agent_dir, profile):
+    """Techspec on gpt-5.6-sol, everyone else on gpt-6.2-sol (Vika 19.11)."""
+    return TECH_MODEL if TECH_ONLY.search(_role_name(agent_dir, profile)) else MAIN_MODEL
 
 
 def effort_for(agent_dir, profile):
-    """Deep thinking for the tech agent and the marketer; others answer faster on medium (Vika 05.11)."""
-    return "high" if TECH.search(os.path.basename(os.path.normpath(agent_dir)) + " " + profile) else "medium"
+    """Deep thinking for the tech agent and the marketer; others answer faster on medium (Vika 05.11).
+    22.11: read the role line too — Ольга's techspec lives in profile «nikita» and got medium."""
+    return "high" if TECH.search(_role_name(agent_dir, profile)) else "medium"
 
 
 def install_plugin(pdir, name):
