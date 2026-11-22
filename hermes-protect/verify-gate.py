@@ -34,13 +34,14 @@ def draft_already_shown(payload):
     """22.11: with display.interim_assistant_messages on, Hermes delivers the draft answer to the owner before
     this check — asking the agent to repeat it «целиком» made every finished task arrive twice (Зюзин, Лаптев)."""
     try:
-        import yaml
         home = os.environ.get("HERMES_HOME") or ""
         prof = payload.get("profile") or ""
         if prof and prof != "default" and not home.rstrip("/").endswith("/profiles/" + prof):
             home = os.path.expanduser(f"~/.hermes/profiles/{prof}")
-        cfg = yaml.safe_load(open(os.path.join(home or os.path.expanduser("~/.hermes"), "config.yaml"))) or {}
-        return bool((cfg.get("display") or {}).get("interim_assistant_messages"))
+        text = open(os.path.join(home or os.path.expanduser("~/.hermes"), "config.yaml"), encoding="utf-8").read()
+        # 22.11: no yaml import — the gateway runs hooks with its own Python, which may lack PyYAML (Дима Син:
+        # the import failed silently and the agent was again told to repeat the whole answer)
+        return re.search(r"(?m)^\s+interim_assistant_messages:\s*(true|yes|on)\b", text, re.I) is not None
     except Exception:
         return False
 
