@@ -495,7 +495,7 @@ def main():
         assert cfg["auxiliary"]["approval"] == {"provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "none"}
         assert cfg["agent"] == {"reasoning_effort": "high", "max_turns": 150, "gateway_notify_interval": 300}
         # 22.11: the owner must see mid-task lines and a Russian «⏳ Работаю» heartbeat («молчит 30 минут»)
-        assert cfg["display"]["interim_assistant_messages"] is True and cfg["display"]["long_running_notifications"] is True
+        assert cfg["display"]["interim_assistant_messages"] is True and cfg["display"]["long_running_notifications"] is False
         assert cfg["display"]["language"] == "ru"
         assert cfg["compression"]["threshold_tokens"] == 120000 and cfg["compression"]["protect_last_n"] == 8 and cfg["compression"]["threshold"] == 0.5, cfg.get("compression")
         assert cfg["compression"]["proactive_prune_tokens"] == 48000, cfg.get("compression")

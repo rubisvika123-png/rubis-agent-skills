@@ -23,11 +23,32 @@ DONE = re.compile(r"готов|сделал|исправил|обновил|за
                   r"сохранил|подготовил|написал|собрал|смонтировал|оформил|перенёс|перенес|настроил|"
                   r"держи|отправил|вот (файл|архив|сайт|документ|ролик|пост)", re.I)
 LOG = os.path.expanduser("~/.hermes/logs/verify-gate.log")
+FINAL_HIDDEN = ("Всё верно — дай итоговый ответ владельцу заново ЦЕЛИКОМ: сам результат полностью (весь текст поста, "
+                "письма, плана, оффера или что просили), как будто предыдущего ответа не было — владелец его не увидит. "
+                "Строку «Проверил: …» (что открыл и увидел) пиши одну, в самом конце. Не пиши «готово», если не проверил.")
+FINAL_SHOWN = ("Твой ответ выше владелец УЖЕ получил. Всё верно — ответь ОДНОЙ строкой «Проверил: …» (что открыл и "
+               "увидел), результат не повторяй. Нашёл и исправил ошибку — пришли только исправленное и строку «Проверил: …».")
+
+
+def draft_already_shown(payload):
+    """22.11: with display.interim_assistant_messages on, Hermes delivers the draft answer to the owner before
+    this check — asking the agent to repeat it «целиком» made every finished task arrive twice (Зюзин, Лаптев)."""
+    try:
+        import yaml
+        home = os.environ.get("HERMES_HOME") or ""
+        prof = payload.get("profile") or ""
+        if prof and prof != "default" and not home.rstrip("/").endswith("/profiles/" + prof):
+            home = os.path.expanduser(f"~/.hermes/profiles/{prof}")
+        cfg = yaml.safe_load(open(os.path.join(home or os.path.expanduser("~/.hermes"), "config.yaml"))) or {}
+        return bool((cfg.get("display") or {}).get("interim_assistant_messages"))
+    except Exception:
+        return False
 
 
 def main():
     try:
-        extra = json.load(sys.stdin).get("extra", {})
+        payload = json.load(sys.stdin)
+        extra = payload.get("extra", {})
     except Exception:
         return
     if int(extra.get("attempt") or 0) > 0:
@@ -48,9 +69,7 @@ def main():
         "2) Картинку/PDF/видео — посмотри сам результат, а не код, который его делал.\n"
         "3) Сайт или ссылку — открой и убедись, что изменение видно.\n"
         "Нашёл ошибку — исправь и проверь снова.\n"
-        "Всё верно — дай итоговый ответ владельцу заново ЦЕЛИКОМ: сам результат полностью (весь текст поста, "
-        "письма, плана, оффера или что просили), как будто предыдущего ответа не было — владелец его не увидит. "
-        "Строку «Проверил: …» (что открыл и увидел) пиши одну, в самом конце. Не пиши «готово», если не проверил."
+        + (FINAL_SHOWN if draft_already_shown(payload) else FINAL_HIDDEN)
     )}, ensure_ascii=False))
 
 
