@@ -110,7 +110,7 @@ def main() -> None:
 
     reset_text = format_moscow_reset(reset_raw)
     print(
-        f"Внимание: недельный лимит - {remaining}%. "
+        f"Внимание: от недельного лимита ChatGPT осталось {remaining}%. "
         f"Обновится {reset_text}. "
         "Сейчас лучше не запускать тяжёлые задачи."
     )
