@@ -24,3 +24,13 @@ assert '"action": "continue"' in out and "post.md" in out and "point-a" not in o
 assert run(["/root/x/post.md"], attempt=1) == ""
 assert run(["/root/x/post.md"], final="Какой вариант берём?") == ""
 print("PASS verify-gate")
+
+# 22.11: interim messages on → the draft already reached the owner; the gate must not ask to repeat it
+with tempfile.TemporaryDirectory() as h:
+    p = os.path.join(h, "profiles", "joe"); os.makedirs(p)
+    open(os.path.join(p, "config.yaml"), "w").write("display:\n  interim_assistant_messages: true\n")
+    inp = json.dumps({"profile": "joe", "extra": {"attempt": 0, "final_response": "Готово, исправил файл.", "changed_paths": ["/root/ai-x/site/index.html"]}})
+    out = subprocess.run([sys.executable, GATE], input=inp, capture_output=True, text=True, env={**os.environ, "HERMES_HOME": p}).stdout
+    msg = json.loads(out)["message"]
+    assert "УЖЕ получил" in msg and "ЦЕЛИКОМ" not in msg, msg
+print("OK verify-gate shown variant")

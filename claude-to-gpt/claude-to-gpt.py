@@ -778,7 +778,10 @@ def apply(p, profile, home):
                 credits_notices=False, busy_ack_enabled=False, show_commentary=False,
                 # 22.11 (Ольга, Лаптев: «молчит 30 минут»): with these two off the engine swallowed every
                 # mid-task line, so the rule «пишу, на каком я шаге» could never reach the owner.
-                interim_assistant_messages=True, long_running_notifications=True, language="ru",
+                interim_assistant_messages=True, language="ru",
+                # 22.11 (Лаптев: «эту хуйню убери, работаю 3 минуты, меня это бесит»): the engine's own heartbeat stays off;
+                # the agent's own short lines between steps are enough.
+                long_running_notifications=False,
                 busy_input_mode="steer", busy_steer_ack_enabled=False)  # mid-task message no longer kills the work
     cfg.setdefault("agent", {})["gateway_notify_interval"] = 300  # «⏳ Работаю — N мин» every 5 min, edited in place
     cfg.setdefault("telegram", {})["gateway_restart_notification"] = False
@@ -1381,7 +1384,7 @@ def upgrade_profile(agent_dir, profile, home):
     cfg_path = os.path.join(pdir, "config.yaml")
     cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
     shutil.copy2(cfg_path, cfg_path + time.strftime(".bak-upgrade-%Y%m%d-%H%M%S"))
-    cfg.setdefault("display", {}).update(interim_assistant_messages=True, long_running_notifications=True, language="ru")
+    cfg.setdefault("display", {}).update(interim_assistant_messages=True, long_running_notifications=False, language="ru")
     cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(agent_dir, profile), gateway_notify_interval=300)
     with open(cfg_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
