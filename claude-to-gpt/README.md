@@ -15,3 +15,10 @@ python3 ~/claude-to-gpt.py /root/ai-victoriarubis marketer --apply  # перен
 
 ## Проверка на настоящих задачах (22.11)
 После переноса — `python3 gpt-quality-check.py <профиль> <папка агента> 4`: берёт прошлые просьбы владельца, которые агент на Claude сделал хорошо, даёт их агенту на GPT в отдельном разговоре (ничего не меняет и не отправляет) и кладёт ответы рядом в `~/.hermes/profiles/<профиль>/quality-check.md`. Тратит лимит ChatGPT — 3–5 задач достаточно.
+
+## Проверить и обновить уже перенесённых агентов (22.11)
+Проверка (только читает): `curl -fsSL https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/doctor.sh | bash`
+Обновить всех перенесённых агентов на сервере (характер, память и бот сохраняются; копии старых файлов рядом с .bak-upgrade-…):
+```
+curl -fsSL https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/claude-to-gpt/claude-to-gpt.py -o ~/claude-to-gpt.py && python3 ~/claude-to-gpt.py --upgrade-all && hermes gateway restart
+```

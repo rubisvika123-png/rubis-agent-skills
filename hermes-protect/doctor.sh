@@ -4,7 +4,8 @@
 # Только читает. Печатает по каждому агенту: ОК / ПРОБЛЕМА + что сделать. Ничего не меняет.
 #   curl -fsSL https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/hermes-protect/doctor.sh | bash
 H="${HERMES_DIR:-$HOME/.hermes}"
-FIX="Отправь себе ещё раз сообщение из урока 10, шаг 9 (пункт 5 скачает свежие защиты), потом напиши агенту /new."
+FIX="Обнови агентов одной командой (2 строки ниже в ИТОГ) и запусти проверку ещё раз."
+UPD='curl -fsSL https://raw.githubusercontent.com/rubisvika123-png/rubis-agent-skills/main/claude-to-gpt/claude-to-gpt.py -o ~/claude-to-gpt.py && python3 ~/claude-to-gpt.py --upgrade-all && hermes gateway restart' 
 bad=0
 say() { echo "  $1"; }
 prob() { echo "  ПРОБЛЕМА: $1"; bad=$((bad+1)); }
@@ -18,6 +19,8 @@ else say "ОК: проверка «перед готово» свежая"; fi
 for home in "$H" "$H"/profiles/*; do
   [ -f "$home/config.yaml" ] || continue
   name=$(basename "$home"); [ "$home" = "$H" ] && name="основной"
+  # 22.11: проверяем только агентов, перенесённых переносчиком (в характере есть «Моя рабочая папка»)
+  grep -q "Моя рабочая папка" "$home/SOUL.md" 2>/dev/null || continue
   echo "== Агент: $name"
   soul="$home/SOUL.md"
   if [ -f "$soul" ]; then
@@ -26,9 +29,35 @@ for home in "$H" "$H"/profiles/*; do
     grep -q "Заметки — коротко и по местам" "$soul" || prob "в характере нет правила «файл цифр — только цифры». $FIX"
     grep -q "## Цифры владельца — сразу в файл" "$soul" || prob "в характере нет правила «цифры владельца сразу в файл» — агент теряет цифры из разговора. $FIX"
     grep -q "## Длина ответа владельцу" "$soul" || prob "в характере нет ограничения длины — агент пишет простыни и тратит лимит. $FIX"
+    # 22.11: ночные починки качества
+    grep -q "## Лимиты ChatGPT" "$soul" || prob "агент не знает, как смотреть лимит, — отвечает «система не показывает». $FIX"
+    grep -q "## Договорённости по задаче" "$soul" || prob "агент не записывает договорённости из чата — теряет их при сжатии памяти. $FIX"
+    grep -q "исправляю и исходный файл" "$soul" || prob "поправленный факт агент не исправляет в исходном файле — старое всплывает снова. $FIX"
+    grep -q "## Попросили сделать" "$soul" || prob "агент отвечает «дашь да?» вместо результата. $FIX"
+    grep -q "не больше двух раз на одну задачу" "$soul" || prob "агент может бесконечно гонять проверки и не сдавать итог. $FIX"
   else prob "нет файла характера SOUL.md"; fi
+  python3 - "$home/config.yaml" "$soul" <<'PY' || bad=$((bad+1))
+import sys, re
+try:
+    import yaml
+    c = yaml.safe_load(open(sys.argv[1])) or {}
+except Exception:
+    sys.exit(0)
+d = c.get("display") or {}
+ok = True
+if d.get("interim_assistant_messages") is False or d.get("long_running_notifications") is False:
+    print("  ПРОБЛЕМА: выключены сообщения по ходу работы — ученик видит тишину по полчаса. Обнови агентов (команда в ИТОГ)."); ok = False
+head = ""
+try:
+    head = open(sys.argv[2], encoding="utf-8").readline()
+except Exception:
+    pass
+if re.search(r"(?i)tech|spec|coder|dev|market|техспец|кодер|маркет", head) and (c.get("agent") or {}).get("reasoning_effort") not in ("high", "xhigh"):
+    print("  ПРОБЛЕМА: техспец/маркетолог думает на средней глубине. Обнови агентов (команда в ИТОГ)."); ok = False
+sys.exit(0 if ok else 1)
+PY
   grep -q "verify-gate.py" "$home/config.yaml" || prob "проверка «перед готово» не подключена к этому агенту. $FIX"
-  grep -A6 '^compression:' "$home/config.yaml" | grep -q 'threshold_tokens: 100000' || prob "не включено раннее сжатие разговора — лимит уходит быстрее. $FIX"
+  grep -A40 '^compression:' "$home/config.yaml" | grep -Eq 'threshold_tokens: (6|10|12)0000' || prob "не включено раннее сжатие разговора — лимит уходит быстрее. $FIX"
   model=$(awk '/^model:/{f=1;next} f&&/default:/{print $2; exit}' "$home/config.yaml")
   [ -n "$model" ] && say "модель: $model"
   db="$home/state.db"
@@ -55,4 +84,11 @@ for pa in /root/ai-*/materials/point-a.md; do
 done
 
 echo
-[ "$bad" = 0 ] && echo "ИТОГ: всё в порядке." || echo "ИТОГ: проблем — $bad. Сделай, что написано у каждой, и запусти проверку ещё раз."
+ls "$H"/profiles/*/scripts/*limit_warning.py >/dev/null 2>&1 || ls "$H"/scripts/*limit_warning.py >/dev/null 2>&1 || prob "нет предупреждения о лимите ChatGPT — агент просто замолчит, когда лимит кончится. $FIX"
+
+echo
+if [ "$bad" = 0 ]; then echo "ИТОГ: всё в порядке."; else
+  echo "ИТОГ: проблем — $bad. Обнови всех агентов одной командой в терминале сервера (характер, память и бот сохранятся):"
+  echo "  $UPD"
+  echo "Потом запусти эту проверку ещё раз."
+fi

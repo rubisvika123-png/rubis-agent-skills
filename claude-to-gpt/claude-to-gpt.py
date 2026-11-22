@@ -1334,7 +1334,85 @@ def handover_to_watchdog(agent_dir, profile, home, who):
     return done
 
 
+def _sections(text):
+    """Split markdown into (heading line, whole section) by «## » headings; text before the first is ('', head)."""
+    parts = re.split(r"(?m)^(?=## )", text)
+    return [((x.splitlines()[0] if x.startswith("## ") else ""), x) for x in parts]
+
+
+def upgrade_soul(text, rules=None, hist=""):
+    """22.11 (Vika: «чтобы ученик сам проверил установку и поправил»): bring an already-moved SOUL up to date
+    WITHOUT rebuilding it from CLAUDE.md (that would drop rules the owner/agent added since the move).
+    Every converter-owned section (GPT_RULES) is replaced by its current version or inserted; the history
+    section is refreshed; everything else stays byte-for-byte."""
+    rules = rules if rules is not None else GPT_RULES.strip()
+    new = {h: body.rstrip() + "\n\n" for h, body in _sections(rules + "\n") if h}
+    out, done = [], set()
+    for h, body in _sections(text):
+        tail = body[body.index(MEM_BEGIN):] if MEM_BEGIN in body else ""  # the memory marker sits at a section's end
+        if h in new:
+            out.append(new[h] + tail); done.add(h)
+        elif hist and h.startswith("## Моя работа до переезда на GPT"):
+            out.append(hist.rstrip() + "\n\n" + tail); done.add("HIST")
+        else:
+            out.append(body)
+    missing = "".join(v for h, v in new.items() if h not in done)
+    if missing:  # before the history/memory tail, so the agent reads rules first
+        idx = next((i for i, x in enumerate(out) if x.startswith("## Моя работа до переезда")
+                    or x.startswith("## Моя долгая память") or x.startswith(MEM_BEGIN)), len(out))
+        if idx == len(out) and out and not out[-1].endswith("\n\n"):
+            out[-1] = out[-1].rstrip() + "\n\n"
+        out.insert(idx, missing)
+    if hist and "HIST" not in done:
+        out.append("\n" + hist.rstrip() + "\n")
+    return "".join(out)
+
+
+def upgrade_profile(agent_dir, profile, home):
+    """Cheap in-place update of a moved agent: rules, progress/language/effort settings, plugins, limit warning,
+    clean Claude-era dialogue, refresh of live conversations. No recipes, no new SOUL from scratch."""
+    pdir = os.path.join(home, ".hermes/profiles", profile) if profile != "default" else os.path.join(home, ".hermes")
+    soul = os.path.join(pdir, "SOUL.md")
+    text = open(soul, encoding="utf-8").read()
+    shutil.copy2(soul, soul + time.strftime(".bak-upgrade-%Y%m%d-%H%M%S"))
+    new = upgrade_soul(text, hist=history_block(agent_dir, home))
+    with open(soul, "w", encoding="utf-8") as f:
+        f.write(new)
+    cfg_path = os.path.join(pdir, "config.yaml")
+    cfg = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
+    shutil.copy2(cfg_path, cfg_path + time.strftime(".bak-upgrade-%Y%m%d-%H%M%S"))
+    cfg.setdefault("display", {}).update(interim_assistant_messages=True, long_running_notifications=True, language="ru")
+    cfg.setdefault("agent", {}).update(reasoning_effort=effort_for(agent_dir, profile), gateway_notify_interval=300)
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+    if os.path.isdir(os.path.join(pdir, "plugins", "busy-ack-ru")):
+        install_plugin(pdir, "busy-ack-ru")
+    install_limit_warning(profile, pdir, server_tz())
+    subprocess.run(["hermes", "-p", profile, "sessions", "refresh-prompts"], capture_output=True, text=True)
+    return len(text), len(new)
+
+
+def moved_profiles(home):
+    """(agent_dir, profile) for every Hermes profile built by this converter (its SOUL names the agent folder)."""
+    found = []
+    for soul in sorted(glob.glob(os.path.join(home, ".hermes/profiles/*/SOUL.md"))):
+        m = re.search(r"Моя рабочая папка — (\S+?)\.? Пути", open(soul, encoding="utf-8", errors="ignore").read())
+        if m and os.path.isdir(m.group(1).rstrip(".")):
+            found.append((m.group(1).rstrip("."), os.path.basename(os.path.dirname(soul))))
+    return found
+
+
 def main():
+    if "--upgrade-all" in sys.argv:  # 22.11: one command to bring every moved agent on this server up to date
+        home = os.path.expanduser("~")
+        todo = moved_profiles(home)
+        if not todo:
+            sys.exit("Не нашёл перенесённых агентов (в ~/.hermes/profiles/*/SOUL.md нет строки «Моя рабочая папка»).")
+        for agent_dir, profile in todo:
+            before, after = upgrade_profile(agent_dir, profile, home)
+            print(f"{profile}: обновлён (правила, сообщения по ходу работы, глубина, лимиты, история) — {agent_dir}")
+        print("Готово. Перезапусти агентов: hermes gateway restart — и напиши любому агенту «что с лимитами?» для проверки.")
+        return
     ap = argparse.ArgumentParser()
     ap.add_argument("agent_dir")
     ap.add_argument("profile")
