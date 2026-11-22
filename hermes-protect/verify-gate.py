@@ -25,9 +25,9 @@ DONE = re.compile(r"готов|сделал|исправил|обновил|за
 LOG = os.path.expanduser("~/.hermes/logs/verify-gate.log")
 FINAL_HIDDEN = ("Всё верно — дай итоговый ответ владельцу заново ЦЕЛИКОМ: сам результат полностью (весь текст поста, "
                 "письма, плана, оффера или что просили), как будто предыдущего ответа не было — владелец его не увидит. "
-                "Строку «Проверил: …» (что открыл и увидел) пиши одну, в самом конце. Не пиши «готово», если не проверил.")
-FINAL_SHOWN = ("Твой ответ выше владелец УЖЕ получил. Всё верно — ответь ОДНОЙ строкой «Проверил: …» (что открыл и "
-               "увидел), результат не повторяй. Нашёл и исправил ошибку — пришли только исправленное и строку «Проверил: …».")
+                "Строку «Проверка: …» (что открыл и увидел) пиши одну, в самом конце. Не пиши «готово», если не проверил.")
+FINAL_SHOWN = ("Твой ответ выше владелец УЖЕ получил. Всё верно — ответь ОДНОЙ строкой «Проверка: …» (что открыл и "
+               "увидел), результат не повторяй. Нашёл и исправил ошибку — пришли только исправленное и строку «Проверка: …».")
 
 
 def draft_already_shown(payload):
@@ -60,6 +60,11 @@ def main():
         return
     # 22.11 (Лаптев, пошаговая настройка меток): every step re-saved a notes file, the gate fired on every step
     # and each step reached the owner twice. A short step-reply within 10 min of the last check is not sent back.
+    # 22.11 (Лаптев «не надо столько сообщений», Дима Син): with the draft already delivered, a short step-reply
+    # («Записала: …») came back as a second message «Проверил: …» — noise for a two-line answer. Short shown
+    # replies are not sent back at all.
+    if len(final) < 400 and draft_already_shown(payload):
+        return
     state = os.path.expanduser(f"~/.hermes/logs/verify-gate-last-{payload.get('profile') or 'default'}")
     try:
         if len(final) < 600 and time.time() - os.path.getmtime(state) < 600:
