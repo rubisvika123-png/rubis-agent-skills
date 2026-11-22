@@ -57,6 +57,18 @@ def main():
     paths = [p for p in extra.get("changed_paths") or [] if not OWN.search(p)]
     if not paths or not final or QUESTION.search(final) or not DONE.search(final):
         return
+    # 22.11 (Лаптев, пошаговая настройка меток): every step re-saved a notes file, the gate fired on every step
+    # and each step reached the owner twice. A short step-reply within 10 min of the last check is not sent back.
+    state = os.path.expanduser(f"~/.hermes/logs/verify-gate-last-{payload.get('profile') or 'default'}")
+    try:
+        if len(final) < 600 and time.time() - os.path.getmtime(state) < 600:
+            return
+    except OSError:
+        pass
+    try:
+        open(state, "w").close()
+    except OSError:
+        pass
     try:
         with open(LOG, "a", encoding="utf-8") as f:
             f.write(time.strftime("%F %T ") + f"sent back to check: {paths[:5]}\n")

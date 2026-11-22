@@ -9,6 +9,7 @@ def run(paths, final="Записал, вот план на неделю.", attem
     env = {**os.environ, "HOME": tempfile.mkdtemp()}
     os.makedirs(os.path.join(env["HOME"], ".hermes", "logs"))
     data = json.dumps({"extra": {"attempt": attempt, "changed_paths": paths, "final_response": final}})
+    env = {**env, "HOME": tempfile.mkdtemp()}  # 22.11: fresh HOME — the step rate-limit state must not leak between cases
     return subprocess.run([sys.executable, GATE], input=data, capture_output=True, text=True, env=env).stdout.strip()
 
 
@@ -30,7 +31,17 @@ with tempfile.TemporaryDirectory() as h:
     p = os.path.join(h, "profiles", "joe"); os.makedirs(p)
     open(os.path.join(p, "config.yaml"), "w").write("display:\n  interim_assistant_messages: true\n")
     inp = json.dumps({"profile": "joe", "extra": {"attempt": 0, "final_response": "Готово, исправил файл.", "changed_paths": ["/root/ai-x/site/index.html"]}})
-    out = subprocess.run([sys.executable, GATE], input=inp, capture_output=True, text=True, env={**os.environ, "HERMES_HOME": p}).stdout
+    out = subprocess.run([sys.executable, GATE], input=inp, capture_output=True, text=True, env={**os.environ, "HERMES_HOME": p, "HOME": h}).stdout
     msg = json.loads(out)["message"]
     assert "УЖЕ получил" in msg and "ЦЕЛИКОМ" not in msg, msg
 print("OK verify-gate shown variant")
+
+# 22.11: a second short step-reply within 10 minutes is not sent back (no doubled step messages)
+with tempfile.TemporaryDirectory() as home:
+    os.makedirs(os.path.join(home, ".hermes", "logs"))
+    inp = json.dumps({"profile": "joe", "extra": {"attempt": 0, "final_response": "Готово, сохранил ссылку TikTok.", "changed_paths": ["/root/ai-x/state/links.txt"]}})
+    env = {**os.environ, "HOME": home}
+    first = subprocess.run([sys.executable, GATE], input=inp, capture_output=True, text=True, env=env).stdout
+    second = subprocess.run([sys.executable, GATE], input=inp, capture_output=True, text=True, env=env).stdout
+    assert first.strip() and not second.strip(), (first, second)
+print("OK verify-gate step rate-limit")
