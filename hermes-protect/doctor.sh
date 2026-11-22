@@ -45,7 +45,7 @@ except Exception:
     sys.exit(0)
 d = c.get("display") or {}
 ok = True
-if d.get("interim_assistant_messages") is False or d.get("long_running_notifications") is False:
+if d.get("interim_assistant_messages") is False:   # 22.11: «⏳ Работаю N мин» is off on purpose (Лаптев: «бесит»)
     print("  ПРОБЛЕМА: выключены сообщения по ходу работы — ученик видит тишину по полчаса. Обнови агентов (команда в ИТОГ)."); ok = False
 head = ""
 try:
