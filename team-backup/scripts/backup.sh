@@ -19,6 +19,8 @@ notify_on_fail() {
   if [ "$rc" != 0 ] && [ -f "${TB_NOTIFY_ENV:-}" ]; then
     tok=$(grep -m1 '^TELEGRAM_BOT_TOKEN=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' || true)
     to=$(grep -m1 -E '^TELEGRAM_ALLOWED_(USER_IDS|USERS)=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' | cut -d, -f1 || true)
+    # agents on Grok (26.11.2026): the owner's chat is ALLOWED_CHAT in the bridge env (/root/grok-bridge/<agent>.env)
+    [ -n "$to" ] || to=$(grep -m1 '^ALLOWED_CHAT=' "$TB_NOTIFY_ENV" | cut -d= -f2- | tr -d '"' || true)
     if [ -n "$tok" ] && [ -n "$to" ]; then
       curl -s -m 20 "https://api.telegram.org/bot$tok/sendMessage" --data-urlencode "chat_id=$to" \
         --data-urlencode "text=Резервная копия команды сегодня НЕ сохранилась. Напиши своему техспецу: «Почини резервную копию». Что случилось: $(tail -c 600 "$LOG")" >/dev/null || true
@@ -96,13 +98,25 @@ for d in "$H/second-brain" ${TB_SHARED:-}; do
   d="${d%/}"; [ -d "$d" ] && copy "$d/" "shared/$(basename "$d")/"
 done
 
+# Agents on Grok (Cursor) — 26.11.2026: their schedules, reminders and task board live in the bridge state,
+# the team settings in /etc/grok-team.json. Bridge *.env files hold bot tokens — never copied.
+GB="${TB_GROK_BRIDGE:-$H/grok-bridge}"
+if [ -d "$GB" ]; then
+  for st in "$GB"/state-*/; do
+    [ -d "$st" ] || continue
+    n="$(basename "$st")"; agents+=("grok:${n#state-}")
+    for f in schedules.jsonl reminders.jsonl reminders.json tasks.jsonl; do copy "$st$f" "grok/$n/$f"; done
+  done
+  copy "${TB_GROK_CONFIG:-/etc/grok-team.json}" "grok/grok-team.json"
+fi
+
 # Schedules: cron and services that keep agents alive.
 if [ "${TB_SKIP_SYSTEM:-0}" != 1 ]; then
   mkdir -p "$SNAP/system"
   crontab -l > "$SNAP/system/crontab.txt" 2>/dev/null || true
   for u in /etc/systemd/system/*.service /etc/systemd/system/*.timer "$H"/.config/systemd/user/*.service "$H"/.config/systemd/user/*.timer; do
     [ -f "$u" ] || continue
-    grep -qE "$H/|hermes|agent|claude|watchdog" "$u" 2>/dev/null || continue
+    grep -qE "$H/|hermes|agent|claude|watchdog|grok" "$u" 2>/dev/null || continue
     copy "$u" "system/units/$(basename "$u")"
   done
 fi
